@@ -25,12 +25,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         { href: "/week", label: "Week", icon: "🗓️" },
         { href: "/approvals", label: "Approvals", icon: "✅", badge: approvals?.total },
         { href: "/tasks", label: "Tasks", icon: "📋" },
+        { href: "/screens", label: "Screens", icon: "🎮" },
         { href: "/school", label: "School", icon: "🎓" },
         { href: "/sport", label: "Sport", icon: "🤽" },
       ]
     : [
         { href: "/", label: "Home", icon: "🏠" },
         { href: "/week", label: "Week", icon: "🗓️" },
+        { href: "/screens", label: "Screens", icon: "🎮" },
         { href: "/tasks", label: "My tasks", icon: "📋" },
         { href: "/school", label: "School", icon: "🎓" },
         { href: "/sport", label: "Sport", icon: "🤽" },

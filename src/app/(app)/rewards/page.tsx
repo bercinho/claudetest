@@ -6,6 +6,7 @@ import { getSettings, type Settings } from "@/lib/db";
 import { formatTimestamp } from "@/lib/dates";
 import { wallet } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { formatMinutes } from "@/lib/screens";
 import { listChildren, listRedemptions, listRewards } from "@/lib/queries";
 import type { Reward, User } from "@/lib/types";
 
@@ -96,6 +97,7 @@ function RewardCard({
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {reward.cost_points > 0 && <Pill tone="points">{reward.cost_points} {settings.pointsLabel}</Pill>}
         {reward.cost_money_cents > 0 && <Pill tone="money">{formatMoney(reward.cost_money_cents, settings)}</Pill>}
+        {reward.screen_minutes > 0 && <Pill tone="good">+{formatMinutes(reward.screen_minutes)} screens</Pill>}
         {reward.stock !== null && <Pill tone={soldOut ? "bad" : "warn"}>{reward.stock} left</Pill>}
         {owner && <Pill>{owner.emoji} {owner.name} only</Pill>}
         {!reward.active && <Pill tone="warn">hidden</Pill>}
@@ -175,7 +177,7 @@ function RewardForm({ reward, childrenList }: { reward?: Reward; childrenList: U
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div>
           <label className="label" htmlFor={`rpoints-${key}`}>
             Costs points
@@ -213,6 +215,19 @@ function RewardForm({ reward, childrenList }: { reward?: Reward; childrenList: U
             className="field"
             placeholder="∞"
             defaultValue={reward?.stock ?? ""}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor={`rscreen-${key}`}>
+            Adds screen time
+          </label>
+          <input
+            id={`rscreen-${key}`}
+            name="screenMinutes"
+            type="number"
+            min={0}
+            className="field"
+            defaultValue={reward?.screen_minutes ?? 0}
           />
         </div>
         <div>

@@ -79,6 +79,7 @@ export type Reward = {
   cost_money_cents: number;
   child_id: number | null;
   stock: number | null;
+  screen_minutes: number;
   active: number;
   created_at: string;
 };
@@ -286,4 +287,44 @@ export type ScheduleEventView = ScheduleEvent & {
   subject_name: string | null;
   subject_emoji: string | null;
   has_report: number;
+};
+
+// ---------------------------------------------------------------------------
+// Screen and play time
+// ---------------------------------------------------------------------------
+
+export type ScreenBudget = {
+  child_id: number;
+  weekday_minutes: number;
+  weekend_minutes: number;
+  auto_approve_minutes: number;
+  require_tasks_done: number;
+  active: number;
+};
+
+export type ScreenClaim = {
+  id: number;
+  child_id: number;
+  date: string;
+  what: string;
+  requested_minutes: number;
+  granted_minutes: number;
+  status: "REQUESTED" | "APPROVED" | "DENIED" | "CANCELLED";
+  child_note: string;
+  parent_note: string;
+  created_at: string;
+  decided_at: string | null;
+  decided_by: number | null;
+};
+
+export type ScreenGrant = {
+  id: number;
+  child_id: number;
+  date: string;
+  minutes: number;
+  reason: string;
+  source: "MANUAL" | "REWARD";
+  source_id: number | null;
+  created_by: number | null;
+  created_at: string;
 };

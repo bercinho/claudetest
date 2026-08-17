@@ -3,6 +3,7 @@ import { reviewTask } from "@/actions/tasks";
 import { decideRedemption } from "@/actions/rewards";
 import { decideRequest } from "@/actions/requests";
 import { confirmGrade, deleteGrade } from "@/actions/school";
+import { decideScreenClaim } from "@/actions/screens";
 import { ActionForm, ConfirmSubmit, SubmitButton } from "@/components/forms";
 import { EmptyState, PageHeader, Pill, Section } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -11,6 +12,7 @@ import { formatTimestamp } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { formatGrade, gradeRatio, gradeTone, suggestedPoints } from "@/lib/grades";
 import { listRedemptions, listRequests, pendingGrades, submittedInstances } from "@/lib/queries";
+import { formatMinutes, pendingClaims } from "@/lib/screens";
 import { GRADE_KIND_LABEL, REQUEST_KIND_LABEL } from "@/lib/labels";
 
 export default async function ApprovalsPage() {
@@ -22,8 +24,13 @@ export default async function ApprovalsPage() {
   const redemptions = listRedemptions({ status: "REQUESTED" });
   const requests = listRequests({ status: "OPEN" });
   const grades = pendingGrades();
+  const screens = pendingClaims();
   const nothingToDo =
-    tasks.length === 0 && redemptions.length === 0 && requests.length === 0 && grades.length === 0;
+    tasks.length === 0 &&
+    redemptions.length === 0 &&
+    requests.length === 0 &&
+    grades.length === 0 &&
+    screens.length === 0;
 
   return (
     <>
@@ -88,6 +95,57 @@ export default async function ApprovalsPage() {
         </Section>
       )}
 
+
+
+      {screens.length > 0 && (
+        <Section title="Screen time" count={screens.length}>
+          <ul className="grid gap-2">
+            {screens.map((claim) => (
+              <li key={claim.id} className="card">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span aria-hidden>🎮</span>
+                  <span className="font-semibold tabular-nums">{formatMinutes(claim.requested_minutes)}</span>
+                  <span className="min-w-0 flex-1">{claim.what || "Screen time"}</span>
+                  <span className="text-xs text-ink-muted">
+                    {claim.child_emoji} {claim.child_name} · {claim.date}
+                  </span>
+                </div>
+                {claim.child_note && <p className="mt-1.5 text-sm italic">“{claim.child_note}”</p>}
+
+                <ActionForm action={decideScreenClaim} className="mt-3 flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="id" value={claim.id} />
+                  <div className="w-24">
+                    <label className="label" htmlFor={`smin-${claim.id}`}>
+                      Grant
+                    </label>
+                    <input
+                      id={`smin-${claim.id}`}
+                      name="minutes"
+                      type="number"
+                      min={0}
+                      className="field"
+                      defaultValue={claim.requested_minutes}
+                    />
+                  </div>
+                  <div className="min-w-[8rem] flex-1">
+                    <label className="label" htmlFor={`snote-${claim.id}`}>
+                      Note (optional)
+                    </label>
+                    <input id={`snote-${claim.id}`} name="note" className="field" maxLength={300} />
+                  </div>
+                  <button type="submit" name="decision" value="approve" className="btn btn-good btn-sm">
+                    Approve
+                  </button>
+                  <button type="submit" name="decision" value="deny" className="btn btn-bad btn-sm">
+                    Decline
+                  </button>
+                </ActionForm>
+                <p className="mt-1.5 text-xs text-ink-muted">Lower the number to grant less than he asked for.</p>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       {grades.length > 0 && (
         <Section title="School marks to confirm" count={grades.length}>

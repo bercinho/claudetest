@@ -22,6 +22,7 @@ import { QuickPolicies } from "@/components/quick-policies";
 import { TaskInstanceList } from "@/components/task-list";
 import { EventRow } from "@/components/schedule";
 import { EVENT_KIND } from "@/lib/labels";
+import { formatMinutes, screenDay } from "@/lib/screens";
 import type { User } from "@/lib/types";
 import {
   Avatar,
@@ -96,6 +97,7 @@ async function ParentDashboard({
                 approvals.redemptions > 0 ? `${approvals.redemptions} reward` : null,
                 approvals.requests > 0 ? `${approvals.requests} request${approvals.requests === 1 ? "" : "s"}` : null,
                 approvals.grades > 0 ? `${approvals.grades} school mark${approvals.grades === 1 ? "" : "s"}` : null,
+                approvals.screens > 0 ? `${approvals.screens} screen time` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -114,6 +116,7 @@ async function ParentDashboard({
           const openToday = todaysTasks.filter((task) => task.status === "PENDING").length;
           const todaysEvents = eventsBetween(today, today, { childId: child.id });
           const next = nextEvent(child.id, today, now);
+          const screens = screenDay(child.id, today);
 
           return (
             <article key={child.id} className="card">
@@ -150,6 +153,26 @@ async function ParentDashboard({
                   <PointsSparkline data={trend} />
                 </div>
               </div>
+
+              {screens.active && (
+                <div className="mt-3">
+                  <div className="mb-1 flex justify-between text-xs text-ink-muted">
+                    <span>
+                      🎮 Screens: {formatMinutes(screens.remaining)} left of {formatMinutes(screens.allowance)}
+                    </span>
+                    {screens.awaiting > 0 && (
+                      <Link href="/approvals" className="font-semibold text-accent">
+                        {formatMinutes(screens.awaiting)} asked for
+                      </Link>
+                    )}
+                  </div>
+                  <ProgressBar
+                    value={screens.used}
+                    max={Math.max(screens.allowance, screens.used, 1)}
+                    tone={screens.remaining === 0 ? "accent" : "good"}
+                  />
+                </div>
+              )}
 
               {next && (
                 <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-muted">
@@ -248,6 +271,7 @@ async function ChildDashboard({
   const upcoming = instancesBetween(addDays(today, 1), addDays(today, 3), childId).filter(
     (task) => task.status === "PENDING",
   );
+  const screens = screenDay(childId, today);
   const todaysEvents = eventsBetween(today, today, { childId });
   const next = nextEvent(childId, today, now);
   const openRequests = listRequests({ childId, status: "OPEN" });
@@ -263,9 +287,38 @@ async function ChildDashboard({
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label={settings.pointsLabel} value={purse.points} />
         <Stat label="To spend" value={formatMoney(purse.spendable_cents, settings)} />
-        <Stat label="Saved up" value={formatMoney(purse.saved_cents, settings)} hint="in your goals" />
         <Stat label="Done today" value={`${doneToday}/${todaysTasks.length}`} />
+        <Stat
+          label="Screens left"
+          value={screens.active ? formatMinutes(screens.remaining) : "—"}
+          hint={screens.active ? `of ${formatMinutes(screens.allowance)} today` : "not tracked"}
+        />
       </div>
+
+      {screens.active && (
+        <div className="mb-6">
+          <Link href="/screens" className="card flex items-center gap-3 hover:brightness-[1.02]">
+            <span aria-hidden className="text-2xl">
+              🎮
+            </span>
+            <span className="min-w-0 flex-1 text-sm">
+              <span className="font-semibold">
+                {screens.remaining === 0
+                  ? "No screen time left today"
+                  : `${formatMinutes(screens.remaining)} of screen time left`}
+              </span>
+              <span className="block text-ink-muted">
+                {screens.awaiting > 0
+                  ? `${formatMinutes(screens.awaiting)} waiting on a parent`
+                  : screens.remaining === 0
+                    ? "Tomorrow is a fresh allowance."
+                    : "Tap to ask for some."}
+              </span>
+            </span>
+            <span className="shrink-0 text-sm font-semibold text-accent">Open →</span>
+          </Link>
+        </div>
+      )}
 
       {todaysEvents.length > 0 && (
         <Section title="Today's timetable" count={todaysEvents.length}>

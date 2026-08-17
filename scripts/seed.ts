@@ -95,13 +95,15 @@ insertPolicy.run("Left a mess in a shared room", "", "PENALTY", 5, 0, null);
 // --- Rewards ---------------------------------------------------------------
 
 const insertReward = db.prepare(
-  "INSERT INTO rewards (title, details, cost_points, cost_money_cents, child_id, stock) VALUES (?, ?, ?, ?, ?, ?)",
+  `INSERT INTO rewards (title, details, cost_points, cost_money_cents, child_id, stock, screen_minutes)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`,
 );
-insertReward.run("An extra hour of screen time", "Weekends only", 60, 0, null, null);
-insertReward.run("Pick what's for dinner", "Within reason", 40, 0, null, null);
-insertReward.run("Friend over for a sleepover", "Needs a free Saturday", 150, 0, null, null);
-insertReward.run("Stay up an hour later", "Not on a school night", 50, 0, null, null);
-insertReward.run("Cinema trip", "Ticket and popcorn", 200, 500, null, 2);
+insertReward.run("An extra hour of screen time", "Weekends only", 60, 0, null, null, 60);
+insertReward.run("Half an hour more on a school night", "", 35, 0, null, null, 30);
+insertReward.run("Pick what's for dinner", "Within reason", 40, 0, null, null, 0);
+insertReward.run("Friend over for a sleepover", "Needs a free Saturday", 150, 0, null, null, 0);
+insertReward.run("Stay up an hour later", "Not on a school night", 50, 0, null, null, 0);
+insertReward.run("Cinema trip", "Ticket and popcorn", 200, 500, null, 2, 0);
 
 // --- Pocket money ----------------------------------------------------------
 
@@ -306,6 +308,50 @@ db.prepare(
   "Tired in the last quarter but the third goal was a good one.",
   parentId,
 );
+
+
+// --- Screen and play time ---------------------------------------------------
+
+db.prepare(
+  `INSERT INTO screen_budgets (child_id, weekday_minutes, weekend_minutes, auto_approve_minutes, require_tasks_done, active)
+   VALUES (?, 60, 150, 30, 1, 1)`,
+).run(sonId);
+
+const insertClaim = db.prepare(
+  `INSERT INTO screen_claims (child_id, date, what, requested_minutes, granted_minutes, status, child_note,
+                              parent_note, decided_at, decided_by)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
+);
+
+// A fortnight of claims: mostly waved through, one trimmed, one refused.
+const claims: [number, string, number, number, string, string][] = [
+  // days ago, what, asked, granted, status, parent note
+  [11, "Fortnite with Máté", 60, 60, "APPROVED", ""],
+  [10, "YouTube", 30, 30, "APPROVED", ""],
+  [9, "Fortnite", 90, 45, "APPROVED", "Half now, the rest after the maths homework."],
+  [8, "Minecraft with the cousins", 120, 120, "APPROVED", ""],
+  [6, "YouTube", 30, 30, "APPROVED", ""],
+  [5, "Fortnite", 60, 0, "DENIED", "Not on a night before a match."],
+  [4, "Film with Mum", 100, 100, "APPROVED", ""],
+  [3, "Fortnite with Máté", 45, 45, "APPROVED", ""],
+  [2, "YouTube", 30, 30, "APPROVED", ""],
+  [1, "Fortnite", 60, 40, "APPROVED", "Forty, then out on the bike."],
+];
+
+for (const [daysAgo, what, asked, granted, status, parentNote] of claims) {
+  insertClaim.run(sonId, addDays(today, -daysAgo), what, asked, granted, status, "", parentNote, parentId);
+}
+
+// Today: some used, and one still waiting for a decision.
+insertClaim.run(sonId, today, "YouTube over breakfast", 20, 20, "APPROVED", "", "", parentId);
+db.prepare(
+  `INSERT INTO screen_claims (child_id, date, what, requested_minutes, status, child_note)
+   VALUES (?, ?, ?, ?, 'REQUESTED', ?)`,
+).run(sonId, today, "Fortnite with Máté", 45, "We are in the middle of a season.");
+
+db.prepare(
+  "INSERT INTO screen_grants (child_id, date, minutes, reason, created_by) VALUES (?, ?, ?, ?, ?)",
+).run(sonId, today, 30, "Helped clear out the garage", parentId);
 
 // --- A fortnight of history ------------------------------------------------
 

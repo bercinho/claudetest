@@ -2,8 +2,8 @@
 
 A small self-hosted web app for running the practical side of bringing up a child: the tasks
 he's agreed to do, the house rules that earn or cost something, what he can spend points and
-pocket money on, the things he wants to ask for, how school is going, how sport is going, and
-what his week actually looks like.
+pocket money on, how much screen time he has left, the things he wants to ask for, how school is
+going, how sport is going, and what his week actually looks like.
 
 Everything lives in one SQLite file on your own machine. No accounts, no cloud, no third party
 holding your family's data.
@@ -32,8 +32,17 @@ a bonus per point earned in the period, and a minimum number of points before th
 paid at all. Money can be moved into savings goals, which takes it out of the spendable balance
 until the goal is bought or cancelled.
 
-**Requests** — he asks for permission, money, a purchase or extra screen time, and has to say
-why. You answer with a note. Both of you can point back at what was agreed.
+**Screen and play time** — a daily allowance that differs between school days and the weekend.
+He claims against it — "45 minutes, Fortnite with Máté" — and you approve it, **grant less than
+he asked for**, or decline with a reason. Small claims can be set to go through without asking at
+all, and you can require today's tasks to be done first, which puts every claim in front of you
+until they are. Approved time comes off that day's allowance; nothing carries over to tomorrow.
+A day can be topped up or docked one-off ("helped clear the garage, +30") without touching the
+standing allowance, and a reward in the shop can hand over extra minutes when it's redeemed. If
+you decide mid-session that's enough, ending a granted claim returns the minutes.
+
+**Requests** — he asks for permission, money, a purchase or something else, and has to say why.
+You answer with a note. Both of you can point back at what was agreed.
 
 **School** — set up a term, add the subjects he takes in it, and record marks against them.
 A mark stores what he got *and* what it was out of, so a 4/5 and an 87/100 sit side by side and
@@ -80,9 +89,9 @@ To explore with realistic data first:
 npm run seed           # creates Dad (PIN 1234) and Márk (PIN 1111)
 ```
 
-That gives you a fortnight of ticked-off chores, a term of school marks, a full school and
-waterpolo timetable, a couple of written-up training sessions and a match, and a few things
-waiting for a decision.
+That gives you a fortnight of ticked-off chores and screen-time claims, a term of school marks, a
+full school and waterpolo timetable, a couple of written-up training sessions and a match, and a
+few things waiting for a decision.
 
 `npm run seed -- --force` wipes and reseeds. `npm run reset` deletes the database entirely so the
 setup screen comes back.
@@ -123,6 +132,7 @@ only marked `Secure` when `NODE_ENV=production`, and a PIN is a PIN.
 | `src/lib/migrations/` | Numbered SQL files that bring an older database up to that shape.       |
 | `src/lib/ledger.ts` | Balances, goal reservations, penalty reversals.                           |
 | `src/lib/grades.ts` | Turning marks on any scale into comparable numbers and averages.          |
+| `src/lib/screens.ts` | The day's screen-time arithmetic: allowance, adjustments, what's left.   |
 | `src/lib/scheduler.ts` | Creates task and timetable occurrences, closes overdue ones, pays allowances. |
 | `src/lib/queries.ts`| Every read the pages perform.                                             |
 | `src/actions/`      | Server actions — one file per area, each doing its own permission check.  |
@@ -177,6 +187,8 @@ a running server still holds the old file open.
 
 No notifications or reminders — that's the parent's job, and a nagging app gets muted.
 No photo proof for tasks; a note field is enough and keeps the database small.
+No enforcement of screen time on the actual devices — the app is the agreement and the record,
+not a network filter. It works because you both look at the same number.
 No leaderboards between siblings.
 No importing from the school's own system — marks are typed in, which takes seconds and means
 the two of you look at them together.

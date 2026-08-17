@@ -2,14 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { requireParent, requireSelfOrParent } from "@/lib/auth";
-import { getDb, transaction } from "@/lib/db";
+import { getDb, getSettings, transaction } from "@/lib/db";
+import { nowIn } from "@/lib/dates";
+import { grantRewardScreenTime } from "@/lib/screens";
 import { postBoth, wallet } from "@/lib/ledger";
 import { getReward } from "@/lib/queries";
 import { type ActionState, guard, int, money, ok, str, ValidationError } from "@/lib/form";
 import type { Redemption } from "@/lib/types";
 
 function refresh(): void {
-  for (const path of ["/", "/rewards", "/approvals", "/activity", "/money"]) revalidatePath(path);
+  for (const path of ["/", "/rewards", "/approvals", "/activity", "/money", "/screens"]) revalidatePath(path);
 }
 
 export async function saveReward(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -26,6 +28,7 @@ export async function saveReward(_prev: ActionState, form: FormData): Promise<Ac
       cost_money_cents: money(form, "costMoney", { min: 0 }),
       child_id: childIdRaw === 0 ? null : childIdRaw,
       stock: stockRaw === "" ? null : int(form, "stock", { min: 0, max: 1000 }),
+      screen_minutes: int(form, "screenMinutes", { min: 0, max: 1440, fallback: 0 }),
     };
 
     if (values.cost_points === 0 && values.cost_money_cents === 0) {
@@ -36,13 +39,14 @@ export async function saveReward(_prev: ActionState, form: FormData): Promise<Ac
     if (id > 0) {
       db.prepare(
         `UPDATE rewards SET title = @title, details = @details, cost_points = @cost_points,
-                            cost_money_cents = @cost_money_cents, child_id = @child_id, stock = @stock
+                            cost_money_cents = @cost_money_cents, child_id = @child_id, stock = @stock,
+                            screen_minutes = @screen_minutes
           WHERE id = @id`,
       ).run({ ...values, id });
     } else {
       db.prepare(
-        `INSERT INTO rewards (title, details, cost_points, cost_money_cents, child_id, stock)
-         VALUES (@title, @details, @cost_points, @cost_money_cents, @child_id, @stock)`,
+        `INSERT INTO rewards (title, details, cost_points, cost_money_cents, child_id, stock, screen_minutes)
+         VALUES (@title, @details, @cost_points, @cost_money_cents, @child_id, @stock, @screen_minutes)`,
       ).run(values);
     }
 
@@ -136,6 +140,19 @@ type Chargeable = Pick<
 
 function chargeForRedemption(redemption: Chargeable, parentId: number): void {
   transaction(() => {
+    // A reward can hand over screen time as well as costing points or money.
+    const reward = redemption.reward_id === null ? null : getReward(redemption.reward_id);
+    if (reward && reward.screen_minutes > 0) {
+      grantRewardScreenTime({
+        childId: redemption.child_id,
+        minutes: reward.screen_minutes,
+        rewardTitle: redemption.reward_title,
+        redemptionId: redemption.id,
+        date: nowIn(getSettings().timezone).date,
+        createdBy: parentId,
+      });
+    }
+
     postBoth({
       childId: redemption.child_id,
       points: -redemption.cost_points,

@@ -301,6 +301,7 @@ export type ApprovalCounts = {
   redemptions: number;
   requests: number;
   grades: number;
+  screens: number;
   total: number;
 };
 
@@ -312,8 +313,16 @@ export function approvalCounts(): ApprovalCounts {
   const redemptions = count("SELECT COUNT(*) AS n FROM redemptions WHERE status = 'REQUESTED'");
   const requests = count("SELECT COUNT(*) AS n FROM requests WHERE status = 'OPEN'");
   const grades = count("SELECT COUNT(*) AS n FROM grades WHERE confirmed = 0");
+  const screens = count("SELECT COUNT(*) AS n FROM screen_claims WHERE status = 'REQUESTED'");
 
-  return { tasks, redemptions, requests, grades, total: tasks + redemptions + requests + grades };
+  return {
+    tasks,
+    redemptions,
+    requests,
+    grades,
+    screens,
+    total: tasks + redemptions + requests + grades + screens,
+  };
 }
 
 /** Points per day for the last `days` days — powers the little activity bars. */
