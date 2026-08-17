@@ -13,10 +13,12 @@ import {
   type ISODate,
 } from "./dates";
 import { post, pointsEarnedBetween } from "./ledger";
-import type { Allowance, Task } from "./types";
+import type { Allowance, ScheduleSlot, Task } from "./types";
 
 /** How far ahead occurrences of recurring tasks are created. */
 const HORIZON_DAYS = 14;
+/** The week view can be browsed ahead, so lessons and training run further out. */
+const SCHEDULE_HORIZON_DAYS = 56;
 /** How far back occurrences may be back-filled (never before the task was created). */
 const BACKFILL_DAYS = 7;
 
@@ -108,6 +110,59 @@ export function markMissedTasks(todayDate: ISODate, nowTime: string): number {
     }
   }
   return overdue.length;
+}
+
+/**
+ * Creates the dated occurrences of every active weekly slot — lessons and
+ * regular training — inside the scheduling window. Bounded by the slot's own
+ * dates, by its term when it has one, and never earlier than the slot existed.
+ */
+export function materializeSchedule(todayDate: ISODate): number {
+  const db = getDb();
+  const slots = db
+    .prepare(
+      `SELECT s.*, t.start_date AS term_start, t.end_date AS term_end
+         FROM schedule_slots s
+         LEFT JOIN terms t ON t.id = s.term_id
+        WHERE s.active = 1`,
+    )
+    .all() as (ScheduleSlot & { term_start: string | null; term_end: string | null })[];
+
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO schedule_events
+       (child_id, slot_id, kind, subject_id, title, date, start_time, end_time, location, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+
+  let created = 0;
+  for (const slot of slots) {
+    const lowerBounds = [slot.start_date, slot.created_at.slice(0, 10), addDays(todayDate, -BACKFILL_DAYS)];
+    if (slot.term_start) lowerBounds.push(slot.term_start);
+    const earliest = lowerBounds.sort().at(-1)!;
+
+    const upperBounds = [addDays(todayDate, SCHEDULE_HORIZON_DAYS)];
+    if (slot.end_date) upperBounds.push(slot.end_date);
+    if (slot.term_end) upperBounds.push(slot.term_end);
+    const latest = upperBounds.sort().at(0)!;
+
+    // Jump straight to the first matching weekday instead of walking every day.
+    const offset = (slot.day_of_week - isoDayOfWeek(earliest) + 7) % 7;
+    for (let date = addDays(earliest, offset); date <= latest; date = addDays(date, 7)) {
+      created += insert.run(
+        slot.child_id,
+        slot.id,
+        slot.kind,
+        slot.subject_id,
+        slot.title,
+        date,
+        slot.start_time,
+        slot.end_time,
+        slot.location,
+        slot.note,
+      ).changes;
+    }
+  }
+  return created;
 }
 
 type PaydayInfo = { periodKey: string; paydayDate: ISODate; assessFrom: ISODate };
@@ -209,5 +264,6 @@ export function runMaintenance(options: { force?: boolean } = {}): void {
 
   materializeTasks(date);
   markMissedTasks(date, time);
+  materializeSchedule(date);
   payAllowances(date);
 }

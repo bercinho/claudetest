@@ -2,14 +2,16 @@ import { redirect } from "next/navigation";
 import { reviewTask } from "@/actions/tasks";
 import { decideRedemption } from "@/actions/rewards";
 import { decideRequest } from "@/actions/requests";
-import { ActionForm } from "@/components/forms";
+import { confirmGrade, deleteGrade } from "@/actions/school";
+import { ActionForm, ConfirmSubmit, SubmitButton } from "@/components/forms";
 import { EmptyState, PageHeader, Pill, Section } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/db";
 import { formatTimestamp } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import { listRedemptions, listRequests, submittedInstances } from "@/lib/queries";
-import { REQUEST_KIND_LABEL } from "@/lib/labels";
+import { formatGrade, gradeRatio, gradeTone, suggestedPoints } from "@/lib/grades";
+import { listRedemptions, listRequests, pendingGrades, submittedInstances } from "@/lib/queries";
+import { GRADE_KIND_LABEL, REQUEST_KIND_LABEL } from "@/lib/labels";
 
 export default async function ApprovalsPage() {
   const user = await requireUser();
@@ -19,7 +21,9 @@ export default async function ApprovalsPage() {
   const tasks = submittedInstances();
   const redemptions = listRedemptions({ status: "REQUESTED" });
   const requests = listRequests({ status: "OPEN" });
-  const nothingToDo = tasks.length === 0 && redemptions.length === 0 && requests.length === 0;
+  const grades = pendingGrades();
+  const nothingToDo =
+    tasks.length === 0 && redemptions.length === 0 && requests.length === 0 && grades.length === 0;
 
   return (
     <>
@@ -80,6 +84,72 @@ export default async function ApprovalsPage() {
                 </form>
               </li>
             ))}
+          </ul>
+        </Section>
+      )}
+
+
+      {grades.length > 0 && (
+        <Section title="School marks to confirm" count={grades.length}>
+          <ul className="grid gap-2">
+            {grades.map((grade) => {
+              const ratio = gradeRatio(grade.value, grade.out_of, settings);
+              const tone = gradeTone(ratio);
+              return (
+                <li key={grade.id} className="card">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`shrink-0 rounded-md px-2 py-0.5 font-bold tabular-nums ${
+                        tone === "good"
+                          ? "bg-good-soft text-good"
+                          : tone === "warn"
+                            ? "bg-warn-soft text-warn"
+                            : "bg-bad-soft text-bad"
+                      }`}
+                    >
+                      {formatGrade(grade.value, grade.out_of)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium">
+                        {grade.subject_emoji} {grade.subject_name}
+                        {grade.title && <span className="font-normal"> — {grade.title}</span>}
+                      </span>
+                      <span className="block text-xs text-ink-muted">
+                        {grade.child_emoji} {grade.child_name} · {GRADE_KIND_LABEL[grade.kind]} · {grade.date}
+                        {grade.weight > 1 && ` · counts ${grade.weight}×`}
+                      </span>
+                    </span>
+                  </div>
+                  {grade.note && <p className="mt-1.5 text-sm italic">“{grade.note}”</p>}
+
+                  <ActionForm action={confirmGrade} className="mt-3 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="id" value={grade.id} />
+                    <div className="w-28">
+                      <label className="label" htmlFor={`gpts-${grade.id}`}>
+                        Points
+                      </label>
+                      <input
+                        id={`gpts-${grade.id}`}
+                        name="points"
+                        type="number"
+                        className="field"
+                        defaultValue={suggestedPoints(ratio)}
+                      />
+                    </div>
+                    <SubmitButton variant="good" size="sm" pendingLabel="Saving…">
+                      Confirm mark
+                    </SubmitButton>
+                  </ActionForm>
+
+                  <form action={deleteGrade} className="mt-2">
+                    <input type="hidden" name="id" value={grade.id} />
+                    <ConfirmSubmit message="Throw this mark away? It was entered by your child.">
+                      Not right — remove it
+                    </ConfirmSubmit>
+                  </form>
+                </li>
+              );
+            })}
           </ul>
         </Section>
       )}

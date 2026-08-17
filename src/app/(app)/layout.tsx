@@ -18,11 +18,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const isParent = user.role === "PARENT";
   const approvals = isParent ? approvalCounts() : null;
 
+  // The everyday pages stay on the bar; the rest live behind "More".
   const items: NavItem[] = isParent
     ? [
         { href: "/", label: "Home", icon: "🏠" },
+        { href: "/week", label: "Week", icon: "🗓️" },
         { href: "/approvals", label: "Approvals", icon: "✅", badge: approvals?.total },
         { href: "/tasks", label: "Tasks", icon: "📋" },
+        { href: "/school", label: "School", icon: "🎓" },
+        { href: "/sport", label: "Sport", icon: "🤽" },
+      ]
+    : [
+        { href: "/", label: "Home", icon: "🏠" },
+        { href: "/week", label: "Week", icon: "🗓️" },
+        { href: "/tasks", label: "My tasks", icon: "📋" },
+        { href: "/school", label: "School", icon: "🎓" },
+        { href: "/sport", label: "Sport", icon: "🤽" },
+      ];
+
+  const more: NavItem[] = isParent
+    ? [
         { href: "/policies", label: "House rules", icon: "⚖️" },
         { href: "/rewards", label: "Rewards", icon: "🎁" },
         { href: "/requests", label: "Requests", icon: "🙋" },
@@ -31,8 +46,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         { href: "/family", label: "Family", icon: "👨‍👩‍👦" },
       ]
     : [
-        { href: "/", label: "Home", icon: "🏠" },
-        { href: "/tasks", label: "My tasks", icon: "📋" },
         { href: "/rewards", label: "Rewards", icon: "🎁" },
         { href: "/requests", label: "Ask", icon: "🙋" },
         { href: "/money", label: "My money", icon: "💰" },
@@ -56,7 +69,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </form>
             </div>
           </div>
-          <NavBar items={items} />
+          <NavBar items={items} more={more} />
         </div>
       </header>
 

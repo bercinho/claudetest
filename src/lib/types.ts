@@ -124,7 +124,9 @@ export type LedgerSource =
   | "REQUEST"
   | "ALLOWANCE"
   | "GOAL"
-  | "MANUAL";
+  | "MANUAL"
+  | "GRADE"
+  | "SPORT";
 
 export type LedgerEntry = {
   id: number;
@@ -161,3 +163,127 @@ export type Goal = {
 };
 
 export type Balances = { points: number; money_cents: number };
+
+// ---------------------------------------------------------------------------
+// School
+// ---------------------------------------------------------------------------
+
+export type Term = {
+  id: number;
+  name: string;
+  start_date: string;
+  end_date: string;
+  active: number;
+  created_at: string;
+};
+
+export type Subject = {
+  id: number;
+  term_id: number;
+  child_id: number;
+  name: string;
+  teacher: string;
+  emoji: string;
+  active: number;
+  created_at: string;
+};
+
+export type GradeKind = "TEST" | "ORAL" | "HOMEWORK" | "PROJECT" | "EXAM" | "OTHER";
+
+export type Grade = {
+  id: number;
+  subject_id: number;
+  child_id: number;
+  title: string;
+  kind: GradeKind;
+  value: number;
+  out_of: number;
+  weight: number;
+  date: string;
+  note: string;
+  recorded_by: number | null;
+  confirmed: number;
+  confirmed_by: number | null;
+  confirmed_at: string | null;
+  created_at: string;
+};
+
+// ---------------------------------------------------------------------------
+// Sport and the weekly schedule
+// ---------------------------------------------------------------------------
+
+export type SportProfile = {
+  child_id: number;
+  sport: string;
+  team: string;
+  coach: string;
+  level: string;
+  season_start: string | null;
+  season_end: string | null;
+  notes: string;
+};
+
+export type SlotKind = "LESSON" | "TRAINING" | "OTHER";
+
+export type ScheduleSlot = {
+  id: number;
+  child_id: number;
+  kind: SlotKind;
+  subject_id: number | null;
+  term_id: number | null;
+  title: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  location: string;
+  note: string;
+  start_date: string;
+  end_date: string | null;
+  active: number;
+  created_at: string;
+};
+
+export type EventKind = "LESSON" | "TRAINING" | "EXAM" | "MATCH" | "TOURNAMENT" | "OTHER";
+
+export type Attendance = "PLANNED" | "PRESENT" | "ABSENT" | "EXCUSED" | "CANCELLED";
+
+export type ScheduleEvent = {
+  id: number;
+  child_id: number;
+  slot_id: number | null;
+  kind: EventKind;
+  subject_id: number | null;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  location: string;
+  note: string;
+  attendance: Attendance;
+  created_by: number | null;
+  created_at: string;
+};
+
+export type SportReport = {
+  event_id: number;
+  opponent: string;
+  score_for: number | null;
+  score_against: number | null;
+  outcome: "WIN" | "DRAW" | "LOSS" | null;
+  goals: number;
+  assists: number;
+  minutes: number;
+  coach_rating: number | null;
+  coach_feedback: string;
+  own_note: string;
+  recorded_by: number | null;
+  created_at: string;
+};
+
+export type ScheduleEventView = ScheduleEvent & {
+  child_name: string;
+  child_emoji: string;
+  subject_name: string | null;
+  subject_emoji: string | null;
+  has_report: number;
+};

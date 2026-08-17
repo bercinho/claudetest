@@ -1,23 +1,28 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/db";
-import { addDays, fullDate, nowIn } from "@/lib/dates";
+import { addDays, fullDate, humanDate, nowIn } from "@/lib/dates";
 import { wallet } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import {
   approvalCounts,
   childSummary,
+  eventsBetween,
   instancesBetween,
   listChildren,
   listPolicies,
   listRedemptions,
   listRequests,
+  nextEvent,
   pointsTrend,
 } from "@/lib/queries";
 import { quickAddTask } from "@/actions/tasks";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { QuickPolicies } from "@/components/quick-policies";
 import { TaskInstanceList } from "@/components/task-list";
+import { EventRow } from "@/components/schedule";
+import { EVENT_KIND } from "@/lib/labels";
+import type { User } from "@/lib/types";
 import {
   Avatar,
   Disclosure,
@@ -32,12 +37,12 @@ import {
 export default async function DashboardPage() {
   const user = await requireUser();
   const settings = getSettings();
-  const today = nowIn(settings.timezone).date;
+  const { date: today, time: now } = nowIn(settings.timezone);
 
   return user.role === "PARENT" ? (
-    <ParentDashboard settings={settings} today={today} />
+    <ParentDashboard settings={settings} today={today} now={now} viewer={user} />
   ) : (
-    <ChildDashboard childId={user.id} name={user.name} settings={settings} today={today} />
+    <ChildDashboard child={user} settings={settings} today={today} now={now} />
   );
 }
 
@@ -46,9 +51,13 @@ export default async function DashboardPage() {
 async function ParentDashboard({
   settings,
   today,
+  now,
+  viewer,
 }: {
   settings: ReturnType<typeof getSettings>;
   today: string;
+  now: string;
+  viewer: User;
 }) {
   const children = listChildren();
   const approvals = approvalCounts();
@@ -86,6 +95,7 @@ async function ParentDashboard({
                 approvals.tasks > 0 ? `${approvals.tasks} task${approvals.tasks === 1 ? "" : "s"}` : null,
                 approvals.redemptions > 0 ? `${approvals.redemptions} reward` : null,
                 approvals.requests > 0 ? `${approvals.requests} request${approvals.requests === 1 ? "" : "s"}` : null,
+                approvals.grades > 0 ? `${approvals.grades} school mark${approvals.grades === 1 ? "" : "s"}` : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -102,6 +112,8 @@ async function ParentDashboard({
           const trend = pointsTrend(child.id, today, 14);
           const todaysTasks = instancesBetween(today, today, child.id);
           const openToday = todaysTasks.filter((task) => task.status === "PENDING").length;
+          const todaysEvents = eventsBetween(today, today, { childId: child.id });
+          const next = nextEvent(child.id, today, now);
 
           return (
             <article key={child.id} className="card">
@@ -138,6 +150,27 @@ async function ParentDashboard({
                   <PointsSparkline data={trend} />
                 </div>
               </div>
+
+              {next && (
+                <p className="mt-3 flex items-center gap-1.5 text-xs text-ink-muted">
+                  <span aria-hidden>{EVENT_KIND[next.kind].icon}</span>
+                  <span className="font-semibold text-ink">Next:</span> {next.title} ·{" "}
+                  {humanDate(next.date, today)} {next.start_time}
+                  {next.location && ` · ${next.location}`}
+                </p>
+              )}
+
+              {todaysEvents.length > 0 && (
+                <div className="mt-4 border-t border-line pt-3">
+                  <Disclosure label={`🗓️ Today's timetable (${todaysEvents.length})`}>
+                    <ul className="grid gap-1.5">
+                      {todaysEvents.map((event) => (
+                        <EventRow key={event.id} event={event} today={today} now={now} viewer={viewer} />
+                      ))}
+                    </ul>
+                  </Disclosure>
+                </div>
+              )}
 
               {todaysTasks.length > 0 && (
                 <div className="mt-4 border-t border-line pt-3">
@@ -198,21 +231,25 @@ async function ParentDashboard({
 // ---------------------------------------------------------------------------
 
 async function ChildDashboard({
-  childId,
-  name,
+  child,
   settings,
   today,
+  now,
 }: {
-  childId: number;
-  name: string;
+  child: User;
   settings: ReturnType<typeof getSettings>;
   today: string;
+  now: string;
 }) {
+  const childId = child.id;
+  const viewer = child;
   const purse = wallet(childId);
   const todaysTasks = instancesBetween(today, today, childId);
   const upcoming = instancesBetween(addDays(today, 1), addDays(today, 3), childId).filter(
     (task) => task.status === "PENDING",
   );
+  const todaysEvents = eventsBetween(today, today, { childId });
+  const next = nextEvent(childId, today, now);
   const openRequests = listRequests({ childId, status: "OPEN" });
   const pendingRewards = listRedemptions({ childId, status: "REQUESTED" });
   const trend = pointsTrend(childId, today, 14);
@@ -221,7 +258,7 @@ async function ChildDashboard({
 
   return (
     <>
-      <PageHeader title={`Hi ${name} 👋`} subtitle={fullDate(today)} />
+      <PageHeader title={`Hi ${child.name} 👋`} subtitle={fullDate(today)} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label={settings.pointsLabel} value={purse.points} />
@@ -229,6 +266,28 @@ async function ChildDashboard({
         <Stat label="Saved up" value={formatMoney(purse.saved_cents, settings)} hint="in your goals" />
         <Stat label="Done today" value={`${doneToday}/${todaysTasks.length}`} />
       </div>
+
+      {todaysEvents.length > 0 && (
+        <Section title="Today's timetable" count={todaysEvents.length}>
+          <ul className="grid gap-1.5">
+            {todaysEvents.map((event) => (
+              <EventRow key={event.id} event={event} today={today} now={now} viewer={viewer} />
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {todaysEvents.length === 0 && next && (
+        <Section title="Next up">
+          <div className="card flex items-center gap-2 text-sm">
+            <span aria-hidden>{EVENT_KIND[next.kind].icon}</span>
+            <span className="min-w-0 flex-1">{next.title}</span>
+            <span className="shrink-0 text-xs text-ink-muted tabular-nums">
+              {humanDate(next.date, today)} {next.start_time}
+            </span>
+          </div>
+        </Section>
+      )}
 
       <Section title="Today's tasks" count={todaysTasks.length}>
         {todaysTasks.length === 0 ? (

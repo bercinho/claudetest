@@ -115,6 +115,13 @@ export async function saveSettings(_prev: ActionState, form: FormData): Promise<
     setSetting("currency_position", oneOf(form, "currencyPosition", ["before", "after"] as const, "before"));
     setSetting("points_label", str(form, "pointsLabel", { required: true, max: 20 }));
 
+    const gradeMin = int(form, "gradeMin", { min: 0, max: 100, fallback: 1 });
+    const gradeMax = int(form, "gradeMax", { min: 1, max: 100, fallback: 5 });
+    if (gradeMax <= gradeMin) throw new ValidationError("The best mark must be higher than the worst one");
+    setSetting("grade_min", String(gradeMin));
+    setSetting("grade_max", String(gradeMax));
+    setSetting("grade_best_is_high", oneOf(form, "gradeDirection", ["true", "false"] as const, "true"));
+
     const timezone = str(form, "timezone", { required: true, max: 60 });
     try {
       new Intl.DateTimeFormat("en", { timeZone: timezone });

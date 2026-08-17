@@ -124,9 +124,53 @@ export default async function FamilyPage() {
             </div>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className="label" htmlFor="set-gmin">
+                Worst school mark
+              </label>
+              <input
+                id="set-gmin"
+                name="gradeMin"
+                type="number"
+                min={0}
+                className="field"
+                defaultValue={settings.gradeMin}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="set-gmax">
+                Best school mark
+              </label>
+              <input
+                id="set-gmax"
+                name="gradeMax"
+                type="number"
+                min={1}
+                className="field"
+                defaultValue={settings.gradeMax}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="set-gdir">
+                Which end is better
+              </label>
+              <select
+                id="set-gdir"
+                name="gradeDirection"
+                className="field"
+                defaultValue={settings.gradeBestIsHigh ? "true" : "false"}
+              >
+                <option value="true">Higher is better (1–5, 1–100)</option>
+                <option value="false">Lower is better (German 1–6)</option>
+              </select>
+            </div>
+          </div>
+
           <p className="text-xs text-ink-muted">
             The timezone decides when a day ends, so it controls when tasks count as missed and when pocket money is
-            released.
+            released. The grading scale is what a mark is measured against when no other total is given, and what
+            subject averages are shown on.
           </p>
 
           <div>

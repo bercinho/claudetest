@@ -2,7 +2,8 @@
 
 A small self-hosted web app for running the practical side of bringing up a child: the tasks
 he's agreed to do, the house rules that earn or cost something, what he can spend points and
-pocket money on, and the things he wants to ask for.
+pocket money on, the things he wants to ask for, how school is going, how sport is going, and
+what his week actually looks like.
 
 Everything lives in one SQLite file on your own machine. No accounts, no cloud, no third party
 holding your family's data.
@@ -34,6 +35,26 @@ until the goal is bought or cancelled.
 **Requests** — he asks for permission, money, a purchase or extra screen time, and has to say
 why. You answer with a note. Both of you can point back at what was agreed.
 
+**School** — set up a term, add the subjects he takes in it, and record marks against them.
+A mark stores what he got *and* what it was out of, so a 4/5 and an 87/100 sit side by side and
+still average correctly, with a weight for the ones that count double. He can enter his own
+marks; they wait in your approvals queue until you confirm them, which is also where you decide
+whether the mark is worth points. Subject and term averages are shown on the school's own scale
+and as a percentage.
+
+**Sport** — a profile for the sport, club, coach and season, then every training session and
+match. Regular training lives in the weekly timetable; matches and tournaments are added as
+one-offs. After each one, record whether he turned up and write it up: score, goals, assists,
+minutes, a coach rating out of five, the coach's feedback in their own words, and his own note.
+The season header keeps the running totals — attendance rate, win/draw/loss, goals, average
+coach rating. Sessions that have finished without being written up are listed at the top so
+nothing is quietly forgotten.
+
+**The week** — one page showing school and sport together, day by day, with arrows to move
+between weeks. Lessons and regular training repeat every week; exams, matches and one-off
+sessions are added to a date. Once something has finished, its attendance can be recorded
+straight from the day it sits on.
+
 **Activity** — every point and every cent, with the reason it moved. Balances are derived from
 this log rather than stored, so the history and the numbers can never disagree.
 
@@ -49,13 +70,19 @@ npm run dev            # http://localhost:3000
 ```
 
 The first page you see asks you to create a family and a parent PIN. Add your son from the
-**Family** page, give him his own PIN, and you're going.
+**Family** page, give him his own PIN, and you're going. The **Family** page is also where the
+grading scale lives — it defaults to the Hungarian 1–5, and handles scales where a lower number
+is the better mark.
 
 To explore with realistic data first:
 
 ```bash
 npm run seed           # creates Dad (PIN 1234) and Márk (PIN 1111)
 ```
+
+That gives you a fortnight of ticked-off chores, a term of school marks, a full school and
+waterpolo timetable, a couple of written-up training sessions and a match, and a few things
+waiting for a decision.
 
 `npm run seed -- --force` wipes and reseeds. `npm run reset` deletes the database entirely so the
 setup screen comes back.
@@ -93,8 +120,10 @@ only marked `Secure` when `NODE_ENV=production`, and a PIN is a PIN.
 | Path                | What's in it                                                              |
 | ------------------- | ------------------------------------------------------------------------- |
 | `src/lib/schema.sql`| The whole data model, commented. Start here.                              |
+| `src/lib/migrations/` | Numbered SQL files that bring an older database up to that shape.       |
 | `src/lib/ledger.ts` | Balances, goal reservations, penalty reversals.                           |
-| `src/lib/scheduler.ts` | Creates task occurrences, closes overdue ones, pays allowances.        |
+| `src/lib/grades.ts` | Turning marks on any scale into comparable numbers and averages.          |
+| `src/lib/scheduler.ts` | Creates task and timetable occurrences, closes overdue ones, pays allowances. |
 | `src/lib/queries.ts`| Every read the pages perform.                                             |
 | `src/actions/`      | Server actions — one file per area, each doing its own permission check.  |
 | `src/app/(app)/`    | The signed-in pages; `src/app/login/` is everything before that.          |
@@ -103,12 +132,16 @@ only marked `Secure` when `NODE_ENV=production`, and a PIN is a PIN.
 Next.js (App Router) with server actions, SQLite via `better-sqlite3`, and Tailwind. There is no
 API layer and no client-side store: pages read the database directly and actions write to it.
 
-Two conventions worth knowing before you change anything:
+Three conventions worth knowing before you change anything:
 
 - **Money is always integer minor units** (cents/fillér) end to end. It's only turned into a
   string at the edge, by `formatMoney`.
 - **Balances are never stored.** They're `SUM(amount)` over the `ledger` table. If you add a way
   for points or money to move, post a ledger entry rather than updating a running total.
+- **Recurring things are a definition plus dated occurrences.** `tasks` → `task_instances` and
+  `schedule_slots` → `schedule_events` follow the same shape: the definition holds the rule, the
+  occurrence holds what actually happened on the day. Anything you can tick, miss or write up
+  hangs off the occurrence.
 
 ### Scheduled work without a scheduler
 
@@ -121,8 +154,22 @@ nobody opens it for three days, those three days of misses are all recorded the 
 does. Allowances only ever pay the current period, so a long gap can't release a burst of
 back-payments — a missed week stays missed rather than arriving late.
 
-Occurrences are never created for dates before a task was added, so setting an old start date
-can't generate a pile of retroactive misses.
+Occurrences are never created for dates before a task or timetable slot was added, so setting an
+old start date can't generate a pile of retroactive misses — or a month of training sessions
+asking to be written up. Lessons and training are generated eight weeks ahead so the week view
+can be browsed forward.
+
+### Changing the database
+
+`schema.sql` is always the current shape and is applied whole to a new database; it carries its
+own `PRAGMA user_version`. An existing database is brought forward by the numbered files in
+`src/lib/migrations/`, run once each on startup inside a transaction, with a foreign-key check
+afterwards. When you change the schema: edit `schema.sql`, bump its `user_version`, add the
+matching migration, and add it to the list in `db.ts`. The app refuses to start if those drift
+apart.
+
+`npm run seed` and `npm run reset` replace the database file, so restart the app afterwards —
+a running server still holds the old file open.
 
 ---
 
@@ -131,3 +178,5 @@ can't generate a pile of retroactive misses.
 No notifications or reminders — that's the parent's job, and a nagging app gets muted.
 No photo proof for tasks; a note field is enough and keeps the database small.
 No leaderboards between siblings.
+No importing from the school's own system — marks are typed in, which takes seconds and means
+the two of you look at them together.

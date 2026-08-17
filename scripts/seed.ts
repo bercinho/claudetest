@@ -2,8 +2,8 @@
  * Fills a fresh database with a believable family so the app can be explored
  * before any real data exists.
  *
- *   npm run seed            # refuses if the database already has people in it
- *   npm run seed -- --force # wipes everything first
+ *   npm run seed            # refuses if a database already exists
+ *   npm run seed -- --force # deletes it first and starts clean
  *
  * Runs standalone (no Next.js), so it talks to SQLite directly.
  */
@@ -17,34 +17,20 @@ const force = process.argv.includes("--force");
 const dbPath = path.resolve(process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "family.db"));
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
-const db = new Database(dbPath);
-db.pragma("foreign_keys = ON");
-db.exec(fs.readFileSync(path.join(process.cwd(), "src", "lib", "schema.sql"), "utf8"));
-
-const existing = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
-if (existing > 0 && !force) {
-  console.error(`${dbPath} already has ${existing} people in it. Re-run with --force to wipe and reseed.`);
+// Seeding writes the current schema straight in, which is only safe on a file
+// that does not already hold an older shape. --force starts from nothing.
+if (force) {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    if (fs.existsSync(`${dbPath}${suffix}`)) fs.rmSync(`${dbPath}${suffix}`);
+  }
+} else if (fs.existsSync(dbPath)) {
+  console.error(`${dbPath} already exists. Re-run with --force to wipe and reseed, or use \`npm run reset\` first.`);
   process.exit(1);
 }
 
-if (force) {
-  for (const table of [
-    "ledger",
-    "task_instances",
-    "tasks",
-    "policy_applications",
-    "policies",
-    "redemptions",
-    "rewards",
-    "requests",
-    "goals",
-    "allowances",
-    "users",
-  ]) {
-    db.prepare(`DELETE FROM ${table}`).run();
-  }
-  db.prepare("DELETE FROM sqlite_sequence").run();
-}
+const db = new Database(dbPath);
+db.pragma("foreign_keys = ON");
+db.exec(fs.readFileSync(path.join(process.cwd(), "src", "lib", "schema.sql"), "utf8"));
 
 const today = new Date().toISOString().slice(0, 10);
 const addDays = (date: string, days: number) => {
@@ -130,6 +116,195 @@ db.prepare("INSERT INTO goals (child_id, title, target_cents, saved_cents) VALUE
   "Skateboard",
   6500,
   600,
+);
+
+
+// --- School ----------------------------------------------------------------
+
+// A term wrapped around today, so the demo always has a live one.
+const termStart = addDays(today, -45);
+const termEnd = addDays(today, 75);
+const termId = Number(
+  db.prepare("INSERT INTO terms (name, start_date, end_date) VALUES (?, ?, ?)").run("Autumn term", termStart, termEnd)
+    .lastInsertRowid,
+);
+
+const insertSubject = db.prepare(
+  "INSERT INTO subjects (term_id, child_id, name, teacher, emoji) VALUES (?, ?, ?, ?, ?)",
+);
+const subjectIds: Record<string, number> = {};
+for (const [name, teacher, emoji] of [
+  ["Mathematics", "Kovács Anna", "📐"],
+  ["Hungarian literature", "Szabó Péter", "📖"],
+  ["History", "Nagy Éva", "🏛️"],
+  ["English", "Tóth Márta", "🇬🇧"],
+  ["Biology", "Varga Gábor", "🧬"],
+  ["Physical education", "Horváth Zsolt", "🏃"],
+] as const) {
+  subjectIds[name] = Number(insertSubject.run(termId, sonId, name, teacher, emoji).lastInsertRowid);
+}
+
+const insertGrade = db.prepare(
+  `INSERT INTO grades (subject_id, child_id, title, kind, value, out_of, weight, date, note, recorded_by,
+                       confirmed, confirmed_by, confirmed_at)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+);
+
+const marks: [string, string, string, number, number, number, number][] = [
+  // subject, title, kind, value, out of, weight, days ago
+  ["Mathematics", "Quadratic equations", "TEST", 4, 5, 2, 32],
+  ["Mathematics", "Homework check", "HOMEWORK", 5, 5, 1, 20],
+  ["Mathematics", "Functions", "TEST", 3, 5, 2, 8],
+  ["Hungarian literature", "Petőfi essay", "PROJECT", 5, 5, 2, 27],
+  ["Hungarian literature", "Reading aloud", "ORAL", 4, 5, 1, 12],
+  ["History", "Reform era", "TEST", 3, 5, 2, 24],
+  ["History", "Timeline quiz", "OTHER", 82, 100, 1, 10],
+  ["English", "Unit 3 vocabulary", "TEST", 5, 5, 1, 30],
+  ["English", "Speaking exam", "ORAL", 4, 5, 2, 15],
+  ["Biology", "Cell structure", "TEST", 4, 5, 2, 21],
+  ["Biology", "Lab report", "PROJECT", 5, 5, 1, 6],
+  ["Physical education", "Swimming 100m", "OTHER", 5, 5, 1, 18],
+];
+
+for (const [subject, title, kind, value, outOf, weight, daysAgo] of marks) {
+  insertGrade.run(subjectIds[subject], sonId, title, kind, value, outOf, weight, addDays(today, -daysAgo), "", parentId, 1, parentId);
+}
+
+// One mark he entered himself that still needs confirming.
+db.prepare(
+  `INSERT INTO grades (subject_id, child_id, title, kind, value, out_of, weight, date, note, recorded_by, confirmed)
+   VALUES (?, ?, ?, 'TEST', 4, 5, 1, ?, ?, ?, 0)`,
+).run(subjectIds["Mathematics"], sonId, "Surprise test", addDays(today, -1), "Got it back today", sonId);
+
+// --- Sport -----------------------------------------------------------------
+
+db.prepare(
+  `INSERT INTO sport_profiles (child_id, sport, team, coach, level, season_start, season_end, notes)
+   VALUES (?, 'Waterpolo', ?, ?, ?, ?, ?, ?)`,
+).run(
+  sonId,
+  "Városi VSC — U16",
+  "Balogh Tamás",
+  "Semi-pro, U16",
+  addDays(today, -60),
+  addDays(today, 180),
+  "Two pool sessions plus dry-land on Wednesdays. Match days are usually Saturday.",
+);
+
+// --- The weekly timetable ---------------------------------------------------
+
+const insertSlot = db.prepare(
+  `INSERT INTO schedule_slots (child_id, kind, subject_id, term_id, title, day_of_week, start_time, end_time,
+                               location, note, start_date, end_date)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
+);
+
+const lessons: [number, string, string, string][] = [
+  // day (1 = Monday), subject, from, to
+  [1, "Mathematics", "08:00", "08:45"],
+  [1, "Hungarian literature", "08:55", "09:40"],
+  [1, "History", "10:00", "10:45"],
+  [2, "English", "08:00", "08:45"],
+  [2, "Mathematics", "08:55", "09:40"],
+  [2, "Biology", "10:00", "10:45"],
+  [3, "Hungarian literature", "08:00", "08:45"],
+  [3, "History", "08:55", "09:40"],
+  [3, "Physical education", "10:00", "10:45"],
+  [4, "Mathematics", "08:00", "08:45"],
+  [4, "English", "08:55", "09:40"],
+  [4, "Biology", "10:00", "10:45"],
+  [5, "History", "08:00", "08:45"],
+  [5, "Hungarian literature", "08:55", "09:40"],
+  [5, "Physical education", "10:00", "10:45"],
+];
+
+for (const [day, subject, from, to] of lessons) {
+  insertSlot.run(sonId, "LESSON", subjectIds[subject], termId, subject, day, from, to, "School", termStart, termEnd);
+}
+
+const trainings: [number, string, string, string, string][] = [
+  [1, "Waterpolo training", "17:00", "19:00", "Városi uszoda"],
+  [2, "Dry-land conditioning", "17:30", "18:45", "Club gym"],
+  [3, "Waterpolo training", "17:00", "19:00", "Városi uszoda"],
+  [5, "Waterpolo training", "16:30", "18:30", "Városi uszoda"],
+];
+
+const seasonStart = addDays(today, -60);
+const seasonEnd = addDays(today, 180);
+for (const [day, title, from, to, place] of trainings) {
+  insertSlot.run(sonId, "TRAINING", null, null, title, day, from, to, place, seasonStart, seasonEnd);
+}
+
+// A couple of dated one-offs so the week looks lived-in.
+const insertEvent = db.prepare(
+  `INSERT INTO schedule_events (child_id, slot_id, kind, subject_id, title, date, start_time, end_time,
+                                location, note, attendance, created_by)
+   VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+
+// Find the next Saturday for the upcoming match.
+const daysUntilSaturday = (6 - ((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7) + 7) % 7 || 7;
+const nextSaturday = addDays(today, daysUntilSaturday);
+const lastSaturday = addDays(nextSaturday, -7);
+
+insertEvent.run(sonId, "MATCH", null, "League match vs. Eger", nextSaturday, "11:00", "12:30", "Városi uszoda", "Home fixture — be there by 10:15.", "PLANNED", parentId);
+insertEvent.run(sonId, "EXAM", subjectIds["History"], "History test — the Reform era", addDays(today, 5), "08:55", "09:40", "Room 12", "Chapters 4 to 6.", "PLANNED", parentId);
+insertEvent.run(sonId, "EXAM", subjectIds["Mathematics"], "Maths test — functions", addDays(today, 12), "08:00", "08:45", "Room 8", "", "PLANNED", parentId);
+
+// Training that already happened. Occurrences are only ever generated forward
+// from the moment a slot is created, so the demo's history is inserted directly.
+const pastSessions: [number, string, string, string, string, string][] = [
+  // days ago, title, from, to, where, attendance
+  [19, "Waterpolo training", "17:00", "19:00", "Városi uszoda", "PRESENT"],
+  [17, "Dry-land conditioning", "17:30", "18:45", "Club gym", "PRESENT"],
+  [15, "Waterpolo training", "16:30", "18:30", "Városi uszoda", "ABSENT"],
+  [12, "Waterpolo training", "17:00", "19:00", "Városi uszoda", "PRESENT"],
+  [10, "Dry-land conditioning", "17:30", "18:45", "Club gym", "PRESENT"],
+  [8, "Waterpolo training", "16:30", "18:30", "Városi uszoda", "EXCUSED"],
+  [5, "Waterpolo training", "17:00", "19:00", "Városi uszoda", "PRESENT"],
+  [3, "Dry-land conditioning", "17:30", "18:45", "Club gym", "PRESENT"],
+  // The two most recent are left unrecorded, so the sport page has something to do.
+  [2, "Waterpolo training", "16:30", "18:30", "Városi uszoda", "PLANNED"],
+  [1, "Waterpolo training", "17:00", "19:00", "Városi uszoda", "PLANNED"],
+];
+
+const insertReport = db.prepare(
+  `INSERT INTO sport_reports (event_id, opponent, score_for, score_against, outcome, goals, assists, minutes,
+                              coach_rating, coach_feedback, own_note, recorded_by)
+   VALUES (?, '', NULL, NULL, NULL, 0, 0, ?, ?, ?, '', ?)`,
+);
+
+const trainingFeedback = [
+  "Good tempo in the sets. Legs holding up much better than last month.",
+  "Lost concentration in the last twenty minutes.",
+  "Best session of the week — kept his position under pressure.",
+  "Solid. Work on the left-hand shot.",
+];
+
+pastSessions.forEach(([daysAgo, title, from, to, place, attendance], index) => {
+  const eventId = Number(
+    insertEvent.run(sonId, "TRAINING", null, title, addDays(today, -daysAgo), from, to, place, "", attendance, parentId)
+      .lastInsertRowid,
+  );
+  if (attendance === "PRESENT" && index % 2 === 0) {
+    insertReport.run(eventId, 90, 3 + (index % 3), trainingFeedback[index % trainingFeedback.length], parentId);
+  }
+});
+
+// A match that already happened, written up.
+const playedId = Number(
+  insertEvent.run(sonId, "MATCH", null, "League match vs. Szolnok", lastSaturday, "11:00", "12:30", "Szolnok", "", "PRESENT", parentId)
+    .lastInsertRowid,
+);
+db.prepare(
+  `INSERT INTO sport_reports (event_id, opponent, score_for, score_against, outcome, goals, assists, minutes,
+                              coach_rating, coach_feedback, own_note, recorded_by)
+   VALUES (?, 'Szolnok', 11, 9, 'WIN', 3, 2, 24, 4, ?, ?, ?)`,
+).run(
+  playedId,
+  "Excellent work in the centre. Needs to keep his head up on the counter-attack instead of forcing the pass.",
+  "Tired in the last quarter but the third goal was a good one.",
+  parentId,
 );
 
 // --- A fortnight of history ------------------------------------------------
