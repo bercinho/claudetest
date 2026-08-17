@@ -403,6 +403,23 @@ db.prepare(
   "INSERT INTO requests (child_id, kind, title, details, amount_cents, status) VALUES (?, 'PERMISSION', ?, ?, 0, 'OPEN')",
 ).run(sonId, "Sleepover at Máté's on Saturday", "His mum will pick us up at 5 and drop me back Sunday morning.");
 
+// A few things left waiting for a decision, so the approvals queue has one of
+// each kind to look at on a first run.
+db.prepare(
+  `INSERT OR IGNORE INTO task_instances (task_id, child_id, due_date, due_time, status, submitted_at, child_note)
+   VALUES (?, ?, ?, '19:30', 'SUBMITTED', datetime('now'), ?)`,
+).run(taskIds.dishes, sonId, today, "Loaded the dishwasher too.");
+
+const cinema = db.prepare("SELECT id, title, cost_points, cost_money_cents FROM rewards WHERE title = 'Cinema trip'").get() as
+  | { id: number; title: string; cost_points: number; cost_money_cents: number }
+  | undefined;
+if (cinema) {
+  db.prepare(
+    `INSERT INTO redemptions (reward_id, reward_title, child_id, cost_points, cost_money_cents, child_note, status)
+     VALUES (?, ?, ?, ?, ?, ?, 'REQUESTED')`,
+  ).run(cinema.id, cinema.title, sonId, cinema.cost_points, cinema.cost_money_cents, "The new one is out on Friday.");
+}
+
 console.log(`Seeded ${dbPath}`);
 console.log("  Dad  (parent) — PIN 1234");
 console.log("  Márk (child)  — PIN 1111");
