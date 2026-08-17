@@ -124,11 +124,12 @@ db.prepare(
    VALUES (?, ?, 'WEEKLY', 6, ?, ?, 1)`,
 ).run(sonId, 500, 5, 40);
 
+// Leave some money outside the goal, so the rewards shop is usable in the demo.
 db.prepare("INSERT INTO goals (child_id, title, target_cents, saved_cents) VALUES (?, ?, ?, ?)").run(
   sonId,
   "Skateboard",
   6500,
-  1200,
+  600,
 );
 
 // --- A fortnight of history ------------------------------------------------
