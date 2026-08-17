@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Local database + generated secrets — never commit family data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+.env
+.env.local
+.env*.local
+
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
