@@ -6,6 +6,7 @@ import { getDb, transaction } from "@/lib/db";
 import { post } from "@/lib/ledger";
 import { type ActionState, guard, int, money, ok, oneOf, str, ValidationError } from "@/lib/form";
 import type { FamilyRequest } from "@/lib/types";
+import * as notify from "@/lib/notify";
 
 const KINDS = ["MONEY", "PERMISSION", "PURCHASE", "SCREEN_TIME", "OTHER"] as const;
 
@@ -22,13 +23,16 @@ export async function createRequest(_prev: ActionState, form: FormData): Promise
     const amount = kind === "MONEY" ? money(form, "amount", { min: 0 }) : 0;
     if (kind === "MONEY" && amount <= 0) throw new ValidationError("Say how much you are asking for");
 
+    const title = str(form, "title", { required: true, max: 80 });
+
     getDb()
       .prepare(
         `INSERT INTO requests (child_id, kind, title, details, amount_cents)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(childId, kind, str(form, "title", { required: true, max: 80 }), str(form, "details", { max: 800 }), amount);
+      .run(childId, kind, title, str(form, "details", { max: 800 }), amount);
 
+    notify.requestOpened(childId, title);
     refresh();
     return ok("Request sent");
   });
@@ -65,6 +69,7 @@ export async function decideRequest(_prev: ActionState, form: FormData): Promise
       }
     });
 
+    notify.requestDecided(request.child_id, request.title, approve, note);
     refresh();
     return ok(approve ? "Approved" : "Declined");
   });

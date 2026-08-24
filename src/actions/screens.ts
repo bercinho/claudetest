@@ -7,6 +7,7 @@ import { nowIn } from "@/lib/dates";
 import { formatMinutes, getBudget, screenDay, tasksOutstanding } from "@/lib/screens";
 import { type ActionState, guard, int, ok, optionalDate, str, ValidationError } from "@/lib/form";
 import type { ScreenClaim } from "@/lib/types";
+import * as notify from "@/lib/notify";
 
 function refresh(): void {
   for (const path of ["/", "/screens", "/approvals"]) revalidatePath(path);
@@ -64,6 +65,7 @@ export async function grantScreenMinutes(_prev: ActionState, form: FormData): Pr
       .prepare("INSERT INTO screen_grants (child_id, date, minutes, reason, created_by) VALUES (?, ?, ?, ?, ?)")
       .run(childId, date, minutes, str(form, "reason", { max: 200 }), parent.id);
 
+    notify.screenMinutesAdjusted(childId, minutes, str(form, "reason", { max: 200 }));
     refresh();
     return ok(minutes > 0 ? `${formatMinutes(minutes)} added` : `${formatMinutes(-minutes)} taken away`);
   });
@@ -125,6 +127,8 @@ export async function claimScreenTime(_prev: ActionState, form: FormData): Promi
         auto ? actor.id : null,
       );
 
+    if (!auto) notify.screenTimeAsked(childId, minutes, str(form, "what", { max: 80 }));
+
     refresh();
     if (auto) return ok(`${formatMinutes(minutes)} it is — enjoy.`);
     if (outstanding > 0) {
@@ -151,6 +155,13 @@ export async function decideScreenClaim(_prev: ActionState, form: FormData): Pro
           "UPDATE screen_claims SET status = 'DENIED', parent_note = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ? AND status = 'REQUESTED'",
         )
         .run(note, parent.id, id);
+      notify.screenTimeDecided({
+        childId: claim.child_id,
+        approved: false,
+        granted: 0,
+        requested: claim.requested_minutes,
+        note,
+      });
       refresh();
       return ok("Declined");
     }
@@ -173,6 +184,13 @@ export async function decideScreenClaim(_prev: ActionState, form: FormData): Pro
       )
       .run(granted, note, parent.id, id);
 
+    notify.screenTimeDecided({
+      childId: claim.child_id,
+      approved: true,
+      granted,
+      requested: claim.requested_minutes,
+      note,
+    });
     refresh();
     return ok(
       granted < claim.requested_minutes

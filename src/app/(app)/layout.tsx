@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { signOut } from "@/actions/auth";
 import { NavBar, type NavItem } from "@/components/nav";
+import { InstallCard } from "@/components/pwa";
 import { Avatar } from "@/components/ui";
 import { currentUser } from "@/lib/auth";
 import { getSettings } from "@/lib/db";
@@ -45,6 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         { href: "/requests", label: "Requests", icon: "🙋" },
         { href: "/money", label: "Pocket money", icon: "💰" },
         { href: "/activity", label: "Activity", icon: "📜" },
+        { href: "/notifications", label: "Notifications", icon: "🔔" },
         { href: "/family", label: "Family", icon: "👨‍👩‍👦" },
       ]
     : [
@@ -53,11 +55,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         { href: "/money", label: "My money", icon: "💰" },
         { href: "/policies", label: "House rules", icon: "⚖️" },
         { href: "/activity", label: "History", icon: "📜" },
+        { href: "/notifications", label: "Notifications", icon: "🔔" },
       ];
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 border-b border-line bg-bg/85 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b border-line bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto w-full max-w-4xl px-4 pt-3">
           <div className="mb-2.5 flex items-center gap-3">
             <span className="truncate text-sm font-bold tracking-tight">{settings.familyName}</span>
@@ -75,7 +78,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl px-4 py-6">{children}</main>
+      <main className="mx-auto w-full max-w-4xl px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-6">
+        <InstallCard />
+        {children}
+      </main>
     </div>
   );
 }

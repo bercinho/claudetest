@@ -6,6 +6,7 @@ import { getDb, getSettings, transaction } from "@/lib/db";
 import { nowIn } from "@/lib/dates";
 import { post } from "@/lib/ledger";
 import { getGrade, getSubject, getTerm } from "@/lib/queries";
+import * as notify from "@/lib/notify";
 import {
   type ActionState,
   guard,
@@ -183,6 +184,8 @@ export async function saveGrade(_prev: ActionState, form: FormData): Promise<Act
       }
     });
 
+    if (!isParent) notify.gradeEntered(subject.child_id, subject.name, `${value}/${outOf}`);
+
     refresh();
     return ok(isParent ? "Mark recorded" : "Sent to your parent to confirm");
   });
@@ -219,6 +222,7 @@ export async function confirmGrade(_prev: ActionState, form: FormData): Promise<
       }
     });
 
+    notify.gradeConfirmed(grade.child_id, subject?.name ?? "School", points);
     refresh();
     return ok("Mark confirmed");
   });

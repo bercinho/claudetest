@@ -9,6 +9,7 @@ import { postBoth, wallet } from "@/lib/ledger";
 import { getReward } from "@/lib/queries";
 import { type ActionState, guard, int, money, ok, str, ValidationError } from "@/lib/form";
 import type { Redemption } from "@/lib/types";
+import * as notify from "@/lib/notify";
 
 function refresh(): void {
   for (const path of ["/", "/rewards", "/approvals", "/activity", "/money", "/screens"]) revalidatePath(path);
@@ -128,6 +129,8 @@ export async function requestRedemption(_prev: ActionState, form: FormData): Pro
       }
     });
 
+    if (!immediate) notify.rewardAsked(childId, reward.title);
+
     refresh();
     return ok(actor.role === "PARENT" ? `Redeemed: ${reward.title}` : "Sent to your parent for approval");
   });
@@ -186,6 +189,7 @@ export async function decideRedemption(_prev: ActionState, form: FormData): Prom
           "UPDATE redemptions SET status = 'DENIED', parent_note = ?, decided_at = datetime('now'), decided_by = ? WHERE id = ?",
         )
         .run(note, parent.id, id);
+      notify.rewardDecided(redemption.child_id, redemption.reward_title, false, note);
       refresh();
       return ok("Declined");
     }
@@ -205,6 +209,7 @@ export async function decideRedemption(_prev: ActionState, form: FormData): Prom
       chargeForRedemption(redemption, parent.id);
     });
 
+    notify.rewardDecided(redemption.child_id, redemption.reward_title, true, note);
     refresh();
     return ok(`Approved: ${redemption.reward_title}`);
   });

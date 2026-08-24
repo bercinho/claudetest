@@ -6,6 +6,7 @@ import { getDb, getSettings, transaction } from "@/lib/db";
 import { nowIn } from "@/lib/dates";
 import { postBoth, reverseMissPenalty } from "@/lib/ledger";
 import { instanceById } from "@/lib/queries";
+import * as notify from "@/lib/notify";
 import { materializeTasks } from "@/lib/scheduler";
 import {
   type ActionState,
@@ -161,11 +162,14 @@ export async function submitTask(form: FormData): Promise<void> {
         });
       }
     } else {
-      db.prepare(
-        `UPDATE task_instances
-            SET status = 'SUBMITTED', child_note = ?, submitted_at = datetime('now')
-          WHERE id = ? AND status IN ('PENDING', 'MISSED', 'REJECTED')`,
-      ).run(note, instanceId);
+      const submitted = db
+        .prepare(
+          `UPDATE task_instances
+              SET status = 'SUBMITTED', child_note = ?, submitted_at = datetime('now')
+            WHERE id = ? AND status IN ('PENDING', 'MISSED', 'REJECTED')`,
+        )
+        .run(note, instanceId).changes;
+      if (submitted > 0) notify.taskSubmitted(instance.child_id, instance.title);
     }
   });
 
@@ -228,12 +232,14 @@ export async function reviewTask(form: FormData): Promise<void> {
         });
       }
     });
+    notify.taskReviewed(instance.child_id, instance.title, "approve", note);
   } else if (decision === "reject") {
     db.prepare(
       `UPDATE task_instances
           SET status = 'REJECTED', reviewed_at = datetime('now'), reviewed_by = ?, parent_note = ?
         WHERE id = ?`,
     ).run(parent.id, note, instanceId);
+    notify.taskReviewed(instance.child_id, instance.title, "reject", note);
   } else if (decision === "skip") {
     db.prepare(
       `UPDATE task_instances

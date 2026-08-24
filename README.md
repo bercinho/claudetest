@@ -5,8 +5,9 @@ agreed to do, the house rules that earn or cost something, how much screen time 
 he can spend points and pocket money on, the things he wants to ask for, how school is going, how
 sport is going, and what his week actually looks like.
 
-Everything lives in one SQLite file on your own machine. No accounts, no cloud, no third party
-holding your family's data.
+It is one server and as many phones as your family has. The server holds a single SQLite file on a
+machine you own; each phone installs from it and behaves like a normal Android app — its own icon,
+its own window, and notifications. No accounts, no cloud, no third party holding your family's data.
 
 ![The parent dashboard](docs/screenshots/04-parent-home.png)
 
@@ -16,6 +17,9 @@ holding your family's data.
 
 - [What it covers](#what-it-covers)
 - [Running it](#running-it)
+- [On a phone](#on-a-phone) — [installing](#installing-it-on-android) ·
+  [notifications](#notifications) · [away from home](#reaching-it-from-outside-the-house) ·
+  [real device usage](#reporting-real-device-usage)
 - [Guide for parents](#guide-for-parents)
   — [Signing in](#signing-in) · [Setting up your family](#setting-up-your-family) ·
   [The dashboard](#the-dashboard) · [Approvals](#approvals-the-one-page-to-check) ·
@@ -41,6 +45,7 @@ holding your family's data.
 | **Rewards** | A shop priced in points, money, or both — some of it screen time |
 | **Requests** | He asks for something and has to say why; you answer with a note |
 | **Activity** | Every point and every cent, with the reason it moved |
+| **Notifications** | A claim or an answer reaching the other person's phone without either of you opening the app |
 
 ---
 
@@ -81,6 +86,9 @@ icon that behaves like a native one.
 | `DATABASE_PATH` | `data/family.db`    | Where the SQLite file lives. Point it at a backed-up directory.  |
 | `APP_SECRET`    | generated on demand | Signs session cookies. Set it explicitly in production.          |
 | `PORT`          | `3000`              | Port for `npm start`.                                            |
+| `VAPID_PUBLIC_KEY`  | generated on demand | Web Push key pair. Pin both before moving the database.      |
+| `VAPID_PRIVATE_KEY` | generated on demand | Changing them invalidates every subscription.                |
+| `PUSH_CONTACT`  | `mailto:family-hq@localhost` | Contact address sent with each push, per the VAPID spec. |
 
 If `APP_SECRET` isn't set, a random one is generated once and kept in `data/.session-secret`, so
 sessions survive restarts without any configuration.
@@ -94,6 +102,193 @@ marked `Secure` when `NODE_ENV=production`, and a PIN is a PIN.
 The whole app follows your phone's light or dark setting:
 
 ![Dark mode](docs/screenshots/40-dark-mode.png)
+
+---
+
+# On a phone
+
+The app is built to be used from a phone and administered from anywhere. Installed, it gets a
+launcher icon and runs without browser bars; the server it talks to is yours.
+
+## Installing it on Android
+
+1. Open the app in **Chrome** on the phone.
+2. Tap **Install** on the card at the top of the page — or Chrome's menu → *Add to Home screen*.
+3. Open it from the new icon.
+
+That's it. It is a real installed app as far as Android is concerned: its own icon, its own task in
+the app switcher, its own storage. The three long-press shortcuts on the icon go straight to
+Approvals, Screen time and The week.
+
+**Installing needs HTTPS.** Over plain `http://` on your home network the app works perfectly, but
+Chrome will not offer to install it and will not deliver notifications. See
+[away from home](#reaching-it-from-outside-the-house) for the two easy ways to get a real
+certificate — both of which also solve using it away from the house.
+
+With no connection it says so plainly instead of showing a browser error:
+
+<img src="docs/screenshots/46-offline.png" alt="The offline screen" width="320">
+
+Nothing that could contain family data is ever cached on the phone — see
+[what the service worker does](#what-the-service-worker-caches-and-why) for why that is deliberate.
+
+## Notifications
+
+Each person turns notifications on per phone, from the **Notifications** page under *More*.
+
+![The notifications page](docs/screenshots/41-notifications.png)
+
+The page lists exactly what will be sent, which differs by role:
+
+| A parent is told when | Your son is told when |
+| --- | --- |
+| A task is ticked off and needs reviewing | A screen-time claim is approved, reduced or declined |
+| Screen time is asked for | A task is approved or sent back |
+| A reward is requested | A request is answered |
+| A request comes in | A reward is approved or declined |
+| A school mark is entered and needs confirming | A mark is confirmed, and what it was worth |
+| | A house rule is applied, and why |
+| | Screen time is added to or taken off today |
+
+Tapping a notification opens the right page — an approval lands you in the queue, a decision lands
+him on his screen-time page. Notifications of the same kind replace one another rather than piling
+up, so a busy afternoon doesn't leave you with fourteen of them.
+
+There is a **Send a test notification** button once a device is set up, which is worth using before
+you rely on it.
+
+<img src="docs/screenshots/45-child-notifications.png" alt="Notifications on the child's phone" width="360">
+
+A few practical notes:
+
+- The setting belongs to the **device**, not to the person. A parent with a phone and a laptop turns
+  it on twice, and gets both.
+- Notifications are a courtesy, never a precondition. If delivery fails, the thing that caused it
+  still happened — the approval is still in the queue.
+- If a phone is wiped or the browser clears its data, its subscription goes stale. The server
+  notices the first time it fails permanently and removes it.
+
+## Reaching it from outside the house
+
+Two things want the same solution: using the app when you're not on the home Wi-Fi, and getting the
+HTTPS certificate that installing and notifications need. Pick whichever you find easier.
+
+**Tailscale** — a private network between your own devices, nothing exposed to the internet.
+Install it on the server and on each phone, then let it terminate TLS for you:
+
+```bash
+tailscale serve --bg 3000        # serves the app at https://<machine>.<tailnet>.ts.net
+```
+
+The certificate is real and trusted, so Chrome will install the app and deliver push. Your family
+reaches it from anywhere they can reach the tailnet, and nobody else can reach it at all. This is
+the recommended option for a family app.
+
+**Cloudflare Tunnel** — a public hostname without opening a port:
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+Convenient, and gives you a name you can type. Traffic passes through Cloudflare, which is worth
+knowing when the traffic is your child's school marks.
+
+**Your own domain and a reverse proxy** — if you already run one. With Caddy the whole config is:
+
+```caddyfile
+family.example.com {
+    reverse_proxy localhost:3000
+}
+```
+
+Caddy gets and renews the certificate itself. This needs port 443 reachable, so it is the option
+that actually puts something on the internet — put it behind Tailscale or an allowlist if you can.
+
+Whichever you choose:
+
+```bash
+npm run build
+APP_SECRET=$(openssl rand -hex 32) PORT=3000 npm start
+```
+
+Set `APP_SECRET` explicitly once you have more than one machine involved, so sessions survive a
+move. The session cookie is marked `Secure` in production, which means the browser will only send
+it over HTTPS — so terminate TLS properly rather than half-way.
+
+## Reporting real device usage
+
+The app cannot see what a phone is actually used for. It knows what was *claimed* and what was
+*granted*, which is the agreement — not the reality.
+
+If you want the reality alongside it, the server accepts reports from a companion app running on
+the phone. When one is set up, the screen-time page shows both figures:
+
+![Claimed against recorded](docs/screenshots/43-claimed-vs-recorded.png)
+
+and the two-week chart gains a grey bar per day for what the phone recorded:
+
+![The usage chart](docs/screenshots/44-usage-chart.png)
+
+![Screen time with recorded usage](docs/screenshots/42-recorded-usage.png)
+
+### Setting up a device
+
+A parent creates a token on the **Notifications** page → *Companion devices*. It is shown once and
+stored only as a SHA-256 hash, so it cannot be recovered — if you lose it, remove the device and
+add another. A token identifies one device belonging to one child and can do nothing else: it
+cannot read the ledger, approve anything, or see another child.
+
+### The endpoint
+
+Both calls authenticate with `Authorization: Bearer <token>`.
+
+**`GET /api/usage`** — what the server thinks of today. Useful for showing the budget natively:
+
+```json
+{
+  "device": { "id": 1, "name": "Márk's phone" },
+  "timezone": "Europe/Budapest",
+  "date": "2026-08-24",
+  "tracking": true,
+  "allowanceMinutes": 95,
+  "usedMinutes": 20,
+  "remainingMinutes": 75,
+  "awaitingMinutes": 45,
+  "recordedMinutes": 82
+}
+```
+
+**`POST /api/usage`** — report a day, or a batch of days after being offline:
+
+```jsonc
+// one day
+{ "date": "2026-08-24", "minutes": 82,
+  "apps": [{ "name": "Fortnite", "minutes": 44 }, { "name": "YouTube", "minutes": 26 }] }
+
+// or several
+{ "days": [ { "date": "2026-08-23", "minutes": 71 }, { "date": "2026-08-24", "minutes": 82 } ] }
+```
+
+`date` defaults to today and `apps` is optional. Re-posting a day replaces it, so a companion can
+report as often as it likes. The server refuses future dates, negative or absurd minute counts,
+malformed dates, batches over 60 days, and bodies over 16 KB; it keeps only the `name`/`minutes`
+shape from `apps`, capped at the 20 biggest, so a companion cannot use the field as general
+storage. A disabled or removed device gets `401` immediately.
+
+### Writing the companion
+
+There is **no companion app in this repository** — the server side is ready for one. On Android it
+would need:
+
+- The `PACKAGE_USAGE_STATS` permission, which the user grants by hand in Settings → Special app
+  access → Usage access. It cannot be granted silently.
+- `UsageStatsManager.queryAndAggregateUsageStats` for per-app foreground totals.
+- A `WorkManager` job posting once or twice a day.
+
+Worth being clear about the limits before building it: Android will report usage, but it will not
+let an ordinary app *block* anything. Enforcement needs Family Link or a device-owner setup, which
+is a different and much larger undertaking. What this buys you is an honest number to talk about,
+which in practice is most of the value.
 
 ---
 
@@ -163,7 +358,9 @@ comes up.
 ## Approvals: the one page to check
 
 If you only look at one page a day, look at this one. Everything waiting on a decision is here, in
-one queue, with a badge on the nav showing the count.
+one queue, with a badge on the nav showing the count. With
+[notifications](#notifications) turned on you don't have to remember to look — each of these
+arrives on your phone as it happens, and tapping it lands you here.
 
 ![The approvals queue](docs/screenshots/06-approvals.png)
 
@@ -513,6 +710,20 @@ home. A request with a real answer in it gets a yes far more often than "can I g
 Your parent's answer is saved next to your question, so neither of you has to remember what was
 agreed.
 
+## Getting told things
+
+![Notifications on your phone](docs/screenshots/45-child-notifications.png)
+
+Under **More → Notifications** there is one button: turn them on for this phone. Then you find out
+when a parent answers, without having to keep opening the app and checking.
+
+You'll be told when a screen-time request is decided — including if you were given less than you
+asked for and why — when a task is approved or sent back, when a request is answered, when a mark is
+confirmed and what it was worth, and when a house rule is applied. Tapping the notification opens
+the right page.
+
+You have to add the app to your home screen first, and turn it on again on each phone you use.
+
 ## Your money
 
 ![Your money](docs/screenshots/39-child-money.png)
@@ -534,6 +745,11 @@ lists every single amount and why you got it.
 | `src/lib/ledger.ts` | Balances, goal reservations, penalty reversals.                           |
 | `src/lib/grades.ts` | Turning marks on any scale into comparable numbers and averages.          |
 | `src/lib/screens.ts` | The day's screen-time arithmetic: allowance, adjustments, what's left.   |
+| `src/lib/push.ts`   | VAPID keys, subscriptions, and sending a Web Push message.                 |
+| `src/lib/notify.ts` | Every notification the app sends, in one readable list.                    |
+| `src/lib/devices.ts` | Companion device tokens and the usage they report.                        |
+| `src/app/api/usage/` | The only HTTP API: what a companion app talks to.                         |
+| `public/sw.js`      | The service worker — offline fallback and push handling.                    |
 | `src/lib/scheduler.ts` | Creates task and timetable occurrences, closes overdue ones, pays allowances. |
 | `src/lib/queries.ts`| Every read the pages perform.                                             |
 | `src/actions/`      | Server actions — one file per area, each doing its own permission check.  |
@@ -553,6 +769,28 @@ Three conventions worth knowing before you change anything:
   `schedule_slots` → `schedule_events` follow the same shape: the definition holds the rule, the
   occurrence holds what actually happened on the day. Anything you can tick, miss or write up hangs
   off the occurrence.
+
+### What the service worker caches, and why
+
+Every page in this app is rendered for whoever is signed in. Caching HTML or React payloads on the
+device would risk showing one person's balance to another, so `public/sw.js` caches **only**
+content-addressed build output (`/_next/static/*`), the icons, the manifest and a static offline
+page. Navigations always go to the network, and fall back to the offline page when there is none.
+`GET` is the only method it touches, so server actions and the API are never intercepted.
+
+The cost is that the app needs a connection to show anything real. For a family app whose whole
+point is a shared, current number, that is the right trade.
+
+### Notifications
+
+`src/lib/notify.ts` holds the whole set, one function per event, so what the app sends can be read
+at a glance. Nothing there is awaited and nothing throws: a notification is a courtesy, never a
+precondition for the change that caused it. `push()` fires and forgets; a permanently failing
+endpoint (404/410) is deleted, anything else has its failure count bumped.
+
+The VAPID key pair is generated on first use and stored in `settings`, so a home install needs no
+configuration. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` to pin it instead — worth doing before
+you move the database between machines, since changing the keys invalidates every subscription.
 
 ### Who may do what
 
@@ -598,4 +836,9 @@ No leaderboards between siblings.
 No importing from the school's own system — marks are typed in, which takes seconds and means the
 two of you look at them together.
 No enforcement of screen time on the actual devices — the app is the agreement and the record, not a
-network filter.
+network filter. A companion can *report* what a phone did; Android will not let an ordinary app stop
+it.
+No offline use beyond a polite "no connection" screen. Every number here is shared and current, and
+a stale copy of someone's balance is worse than no copy.
+No native Android app. The installed web app covers everything except reading device usage, and a
+second codebase is a lot to maintain for one screen.

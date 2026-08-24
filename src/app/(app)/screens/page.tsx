@@ -13,6 +13,7 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/db";
 import { fullDate, humanDate, nowIn, weekdayName } from "@/lib/dates";
 import { listChildren } from "@/lib/queries";
+import { recordedMinutes, recordedRange, topApps } from "@/lib/devices";
 import {
   claimsForDay,
   formatMinutes,
@@ -54,6 +55,11 @@ export default async function ScreensPage({ searchParams }: { searchParams: Prom
   const outstanding = budget.require_tasks_done === 1 ? tasksOutstanding(child.id, today) : 0;
   const trend = usageTrend(child.id, today, 14);
 
+  // What a companion device on his phone actually reported, if one is set up.
+  const recorded = recordedMinutes(child.id, today);
+  const recordedByDay = recordedRange(child.id, trend[0]?.date ?? today, today);
+  const apps = topApps(child.id, today, 4);
+
   return (
     <>
       <PageHeader
@@ -83,6 +89,36 @@ export default async function ScreensPage({ searchParams }: { searchParams: Prom
       )}
 
       <TodayCard day={day} />
+
+      {recorded !== null && (
+        <div className="card mb-6">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="section-title">What the phone actually recorded today</span>
+            <span
+              className={`text-lg font-bold tabular-nums ${
+                recorded > day.used ? "text-bad" : "text-good"
+              }`}
+            >
+              {formatMinutes(recorded)}
+            </span>
+            <span className="text-xs text-ink-muted">
+              against {formatMinutes(day.used)} claimed
+              {recorded > day.used && ` — ${formatMinutes(recorded - day.used)} more than agreed`}
+            </span>
+          </div>
+          {apps.length > 0 && (
+            <p className="mt-2 text-xs text-ink-muted">
+              {apps.map((app) => `${app.name} ${formatMinutes(app.minutes)}`).join(" · ")}
+            </p>
+          )}
+          {isParent && recorded > day.used && (
+            <p className="mt-2 text-xs text-ink-muted">
+              Worth a conversation rather than an automatic penalty — the figures come from the phone, and phones
+              count differently to people.
+            </p>
+          )}
+        </div>
+      )}
 
       {day.active && (
         <Section title={isParent ? `Ask on ${child.name}'s behalf` : "Ask for time"}>
@@ -152,7 +188,7 @@ export default async function ScreensPage({ searchParams }: { searchParams: Prom
 
       <Section title="The last two weeks">
         <div className="card">
-          <UsageChart trend={trend} allowance={Math.max(day.allowance, 1)} />
+          <UsageChart trend={trend} allowance={Math.max(day.allowance, 1)} recorded={recordedByDay} />
         </div>
       </Section>
 
@@ -399,32 +435,47 @@ function GrantList({ childId, today }: { childId: number; today: string }) {
 function UsageChart({
   trend,
   allowance,
+  recorded,
 }: {
   trend: { date: string; minutes: number }[];
   allowance: number;
+  /** What a companion device reported per day, when there is one. */
+  recorded: Map<string, number>;
 }) {
-  const peak = Math.max(allowance, ...trend.map((day) => day.minutes), 1);
+  const hasRecorded = recorded.size > 0;
+  const peak = Math.max(allowance, ...trend.map((day) => day.minutes), ...recorded.values(), 1);
 
   return (
     <div>
       <div className="flex h-24 items-end gap-1">
         {trend.map((day) => {
-          const height = Math.max(2, Math.round((day.minutes / peak) * 88));
+          const bar = (minutes: number) => Math.max(2, Math.round((minutes / peak) * 88));
+          const actual = recorded.get(day.date);
           return (
             <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
-              <span
-                className={`w-full rounded-sm ${day.minutes > allowance ? "bg-bad" : "bg-accent"}`}
-                style={{ height }}
-                title={`${day.date}: ${formatMinutes(day.minutes)}`}
-              />
+              <div className="flex w-full items-end justify-center gap-[2px]">
+                <span
+                  className={`w-full rounded-sm ${day.minutes > allowance ? "bg-bad" : "bg-accent"}`}
+                  style={{ height: bar(day.minutes) }}
+                  title={`${day.date}: ${formatMinutes(day.minutes)} claimed`}
+                />
+                {actual !== undefined && (
+                  <span
+                    className="w-full rounded-sm bg-ink-muted/45"
+                    style={{ height: bar(actual) }}
+                    title={`${day.date}: ${formatMinutes(actual)} recorded by the phone`}
+                  />
+                )}
+              </div>
               <span className="text-[0.6rem] text-ink-muted">{weekdayName(day.date).charAt(0)}</span>
             </div>
           );
         })}
       </div>
       <p className="mt-2 text-xs text-ink-muted">
-        Minutes used per day, ending today on the right. Anything above today&apos;s allowance of{" "}
+        Minutes per day, ending today on the right. Anything above today&apos;s allowance of{" "}
         {formatMinutes(allowance)} is shown in red.
+        {hasRecorded && " The grey bar beside each day is what the phone itself recorded."}
       </p>
     </div>
   );

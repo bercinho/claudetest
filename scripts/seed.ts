@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import Database from "better-sqlite3";
 import { hashPin } from "../src/lib/pin.ts";
 
@@ -353,6 +354,49 @@ db.prepare(
   "INSERT INTO screen_grants (child_id, date, minutes, reason, created_by) VALUES (?, ?, ?, ?, ?)",
 ).run(sonId, today, 30, "Helped clear out the garage", parentId);
 
+
+// --- A companion device, so the demo shows recorded-vs-claimed usage --------
+
+// A fixed token purely so the demo API is easy to try. Real tokens are random
+// and only ever shown once; this one exists because the seed is a toy.
+const DEMO_DEVICE_TOKEN = "demo-companion-token";
+const deviceId = Number(
+  db
+    .prepare("INSERT INTO devices (child_id, name, token_hash, created_by) VALUES (?, ?, ?, ?)")
+    .run(
+      sonId,
+      "Márk's phone",
+      crypto.createHash("sha256").update(DEMO_DEVICE_TOKEN).digest("hex"),
+      parentId,
+    ).lastInsertRowid,
+);
+
+const insertUsage = db.prepare(
+  "INSERT INTO device_usage (child_id, device_id, date, minutes, apps) VALUES (?, ?, ?, ?, ?)",
+);
+const usageDays: [number, number, [string, number][]][] = [
+  // days ago, minutes the phone recorded, app breakdown
+  [0, 82, [["Fortnite", 44], ["YouTube", 26], ["WhatsApp", 12]]],
+  [1, 71, [["Fortnite", 50], ["YouTube", 21]]],
+  [2, 55, [["YouTube", 34], ["WhatsApp", 21]]],
+  [3, 138, [["Fortnite", 96], ["YouTube", 42]]],
+  [4, 44, [["WhatsApp", 44]]],
+  [5, 96, [["Minecraft", 70], ["YouTube", 26]]],
+  [6, 121, [["Fortnite", 88], ["YouTube", 33]]],
+  [7, 38, [["YouTube", 38]]],
+  [8, 64, [["Fortnite", 40], ["WhatsApp", 24]]],
+  [9, 110, [["Minecraft", 80], ["YouTube", 30]]],
+];
+for (const [daysAgo, minutes, apps] of usageDays) {
+  insertUsage.run(
+    sonId,
+    deviceId,
+    addDays(today, -daysAgo),
+    minutes,
+    JSON.stringify(apps.map(([name, m]) => ({ name, minutes: m }))),
+  );
+}
+
 // --- A fortnight of history ------------------------------------------------
 
 const insertInstance = db.prepare(
@@ -423,4 +467,6 @@ if (cinema) {
 console.log(`Seeded ${dbPath}`);
 console.log("  Dad  (parent) — PIN 1234");
 console.log("  Márk (child)  — PIN 1111");
+console.log(`  companion device token — ${DEMO_DEVICE_TOKEN} (demo only)`);
+console.log("    try: curl -H 'Authorization: Bearer demo-companion-token' localhost:3000/api/usage");
 db.close();

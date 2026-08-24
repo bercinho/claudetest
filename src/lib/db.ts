@@ -28,10 +28,11 @@ function resolveDbPath(): string {
  * verbatim for a brand-new database; the numbered migrations only ever run on
  * a database created by an earlier version.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const MIGRATIONS: { version: number; file: string }[] = [
   { version: 2, file: "002-school-sport.sql" },
   { version: 3, file: "003-screen-time.sql" },
+  { version: 4, file: "004-push-and-devices.sql" },
 ];
 
 function sqlFile(...parts: string[]): string {

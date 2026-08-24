@@ -6,6 +6,7 @@ import { getDb, transaction } from "@/lib/db";
 import { postBoth } from "@/lib/ledger";
 import { type ActionState, guard, int, money, ok, oneOf, str, ValidationError } from "@/lib/form";
 import type { Policy } from "@/lib/types";
+import * as notify from "@/lib/notify";
 
 function refresh(): void {
   for (const path of ["/", "/policies", "/activity"]) revalidatePath(path);
@@ -100,6 +101,7 @@ export async function applyPolicy(_prev: ActionState, form: FormData): Promise<A
       });
     });
 
+    notify.policyApplied(childId, note ? `${policy.title} — ${note}` : policy.title, pointsDelta);
     refresh();
     return ok(`${policy.kind === "PENALTY" ? "Penalty" : "Reward"} applied: ${policy.title}`);
   });
