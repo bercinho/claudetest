@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      Usage access. Not granted by a dialog: the person has to switch it on in
+      Settings, which SetupActivity walks them through. This is the only reason
+      the app exists natively rather than as a web page, and the reporting side
+      does nothing at all without it.
+
+      tools:ignore is needed because the permission is normally reserved for
+      system apps; ordinary apps declare it and rely on the app-op above.
+    -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      So the web app's push notifications can be shown by this app rather than
+      by the browser. Asked for in SetupActivity on Android 13 and up; implicit
+      below that.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <queries>
+        <!-- So the browser hosting the app's screens can be found. -->
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+        <!--
+          Lets the app turn package names into names a person recognises
+          ("Fortnite" rather than com.epicgames.fortnite). This covers every
+          app with a launcher icon, which is the right set and avoids
+          QUERY_ALL_PACKAGES — a permission Google Play requires a separate
+          declaration for.
+        -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".FamilyHqApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FamilyHQ"
+        android:enableOnBackInvokedCallback="true">
+
+        <!-- Launcher entry. Decides between setup and opening the app. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.FamilyHQ.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Claims https links to your own server, so a link in a message
+              opens the app rather than the browser. Verified against
+              /.well-known/assetlinks.json on that host.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${familyHqHost}" />
+            </intent-filter>
+        </activity>
+
+        <!-- Server address, device token, usage permission, reporting status. -->
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:label="@string/setup_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!--
+          The Trusted Web Activity itself. androidbrowserhelper handles the
+          browser handshake, the splash, and falling back to a Custom Tab when
+          the origin has not been verified.
+        -->
+        <activity
+            android:name=".TwaActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.FamilyHQ.Twa">
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="https://${familyHqHost}/" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+                android:resource="@color/twa_status_bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+                android:resource="@color/twa_navigation_bar" />
+        </activity>
+
+        <!--
+          Advertises to the browser that this app will present notifications for
+          its own origin. Has to be exported: the browser is a different app and
+          binds to it across the process boundary. The verified Digital Asset
+          Links relationship is what stops anybody else doing so.
+        -->
+        <service
+            android:name=".NotificationDelegationService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
+        <!-- Re-arms the periodic report after a reboot or an app update. -->
+        <receiver
+            android:name=".usage.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

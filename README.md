@@ -18,7 +18,8 @@ its own window, and notifications. No accounts, no cloud, no third party holding
 - [What it covers](#what-it-covers)
 - [Running it](#running-it)
 - [On a phone](#on-a-phone) — [installing](#installing-it-on-android) ·
-  [notifications](#notifications) · [away from home](#reaching-it-from-outside-the-house) ·
+  [the Play Store app](#the-play-store-app) · [notifications](#notifications) ·
+  [away from home](#reaching-it-from-outside-the-house) ·
   [real device usage](#reporting-real-device-usage)
 - [Guide for parents](#guide-for-parents)
   — [Signing in](#signing-in) · [Setting up your family](#setting-up-your-family) ·
@@ -125,12 +126,48 @@ Chrome will not offer to install it and will not deliver notifications. See
 [away from home](#reaching-it-from-outside-the-house) for the two easy ways to get a real
 certificate — both of which also solve using it away from the house.
 
+There is also **[an Android app you can publish to Google Play](android/README.md)** in this
+repository, for when installing from a browser menu is one explanation too many — see
+[the Play Store app](#the-play-store-app) below.
+
 With no connection it says so plainly instead of showing a browser error:
 
 <img src="docs/screenshots/46-offline.png" alt="The offline screen" width="320">
 
 Nothing that could contain family data is ever cached on the phone — see
 [what the service worker does](#what-the-service-worker-caches-and-why) for why that is deliberate.
+
+## The Play Store app
+
+Installing from a browser menu works, but it is a strange thing to talk a twelve-year-old through,
+and it cannot read how long he has actually been on his phone. So there is a real Android app in
+[`android/`](android/README.md), ready to sign and upload.
+
+It is deliberately thin. The screens it shows *are* these screens — Chrome's engine with the browser
+interface removed, which Android calls a Trusted Web Activity — so there is one copy of every page
+to maintain, not two. What the app adds is the part a web page cannot do:
+
+| | |
+| --- | --- |
+| **A launcher icon from the Play Store** | Installed the way every other app on the phone was |
+| **Real usage reporting** | Per-app foreground minutes, sent to your server every six hours |
+| **Notifications as Family HQ** | Rather than as Chrome, which is confusing on a shared phone |
+| **A native setup screen** | The one thing that has to be native: switching on usage access |
+
+<img src="docs/android/icon-circle.png" alt="The launcher icon" width="140">
+
+On a parent's phone, setup is one field: the server's address. On your son's phone it is three — the
+address, a device token a parent creates under *Notifications → Companion devices*, and usage access,
+which Android only lets you grant by hand in Settings.
+
+[`android/README.md`](android/README.md) covers building it, signing it, pointing it at your server,
+serving the `assetlinks.json` that lets it run without an address bar, the GitHub Actions workflow
+that produces a signed bundle, and a Play Store checklist — the permanent decisions, the privacy
+policy and data-safety answers Play will require, and why an internal testing track is probably the
+right home for a tool three people use.
+
+It has been written and its logic exercised, but **it has never been compiled by Gradle or run on a
+phone** — there was no Android SDK available. That file says exactly what was and was not verified.
 
 ## Notifications
 
@@ -275,20 +312,16 @@ malformed dates, batches over 60 days, and bodies over 16 KB; it keeps only the 
 shape from `apps`, capped at the 20 biggest, so a companion cannot use the field as general
 storage. A disabled or removed device gets `401` immediately.
 
-### Writing the companion
+### The companion that talks to it
 
-There is **no companion app in this repository** — the server side is ready for one. On Android it
-would need:
+[`android/`](android/README.md) holds one: it asks for `PACKAGE_USAGE_STATS`, reads the usage event
+stream, and posts to this endpoint from a `WorkManager` job every six hours. Anything else that can
+hold a bearer token and send JSON will do just as well — the endpoint is the whole contract.
 
-- The `PACKAGE_USAGE_STATS` permission, which the user grants by hand in Settings → Special app
-  access → Usage access. It cannot be granted silently.
-- `UsageStatsManager.queryAndAggregateUsageStats` for per-app foreground totals.
-- A `WorkManager` job posting once or twice a day.
-
-Worth being clear about the limits before building it: Android will report usage, but it will not
-let an ordinary app *block* anything. Enforcement needs Family Link or a device-owner setup, which
-is a different and much larger undertaking. What this buys you is an honest number to talk about,
-which in practice is most of the value.
+Worth being clear about the limits either way: Android will report usage, but it will not let an
+ordinary app *block* anything. Enforcement needs Family Link or a device-owner setup, which is a
+different and much larger undertaking. What this buys you is an honest number to talk about, which
+in practice is most of the value.
 
 ---
 
@@ -749,6 +782,8 @@ lists every single amount and why you got it.
 | `src/lib/notify.ts` | Every notification the app sends, in one readable list.                    |
 | `src/lib/devices.ts` | Companion device tokens and the usage they report.                        |
 | `src/app/api/usage/` | The only HTTP API: what a companion app talks to.                         |
+| `src/app/api/assetlinks/` | Digital Asset Links, served at `/.well-known/assetlinks.json`.       |
+| `android/`          | The Android client — a Trusted Web Activity plus usage reporting.          |
 | `public/sw.js`      | The service worker — offline fallback and push handling.                    |
 | `src/lib/scheduler.ts` | Creates task and timetable occurrences, closes overdue ones, pays allowances. |
 | `src/lib/queries.ts`| Every read the pages perform.                                             |
@@ -791,6 +826,22 @@ endpoint (404/410) is deleted, anything else has its failure count bumped.
 The VAPID key pair is generated on first use and stored in `settings`, so a home install needs no
 configuration. Set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` to pin it instead — worth doing before
 you move the database between machines, since changing the keys invalidates every subscription.
+
+### Environment variables
+
+None are required. Every one of them either has a sensible default or turns on something optional.
+
+| Variable | What it does |
+| --- | --- |
+| `DATABASE_PATH` | Where the SQLite file lives. Defaults to `data/family.db`. |
+| `APP_SECRET` | Signs the session cookie; 16 characters or more. Unset, one is generated into `data/.session-secret`. |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Pin the push key pair instead of generating one. |
+| `PUSH_CONTACT` | The `mailto:` a push service can reach you at. Only matters at scale. |
+| `ANDROID_PACKAGE_NAME` | The Android app's package name, for `assetlinks.json`. |
+| `ANDROID_CERT_FINGERPRINTS` | Its signing certificate SHA-256, or several separated by commas. |
+
+The last two are what let [the Android app](android/README.md) run without an address bar. With them
+unset, `/.well-known/assetlinks.json` correctly returns `[]` — no app claims this site.
 
 ### Who may do what
 

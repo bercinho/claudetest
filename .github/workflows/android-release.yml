@@ -1,0 +1,134 @@
+name: Android release
+
+# Builds the signed app bundle you upload to Google Play.
+#
+# Nothing here is required — you can build on your own machine with
+# `./gradlew bundleRelease` (see android/README.md). This exists so that
+# releasing is one button press and so the signing key never has to leave the
+# repository's secrets.
+#
+# Secrets it needs, all under Settings › Secrets and variables › Actions:
+#
+#   ANDROID_KEYSTORE_BASE64   base64 -w0 my-release-key.jks
+#   ANDROID_KEYSTORE_PASSWORD the store password
+#   ANDROID_KEY_ALIAS         the alias inside the keystore
+#   ANDROID_KEY_PASSWORD      the key password
+#
+# And two variables (not secrets — they end up inside the app anyway):
+#
+#   ANDROID_APPLICATION_ID    e.g. com.yourname.familyhq
+#   ANDROID_HOST              e.g. family.example.com
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name shown in Play, e.g. 1.0.3"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "android-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The runner ships the Android SDK; this just makes sure the platform and
+      # build tools the project asks for are there.
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Check the release settings are filled in
+        env:
+          APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
+        run: |
+          if [ -z "$APPLICATION_ID" ]; then
+            echo "::error::Set the ANDROID_APPLICATION_ID repository variable first." \
+                 "Google Play will not let you change it after the first upload."
+            exit 1
+          fi
+          case "$APPLICATION_ID" in
+            *example*)
+              echo "::error::ANDROID_APPLICATION_ID is still $APPLICATION_ID."
+              exit 1
+              ;;
+          esac
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set, so the bundle could not be signed."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
+          # The properties file is read by app/build.gradle.kts. It is written
+          # here rather than committed, and the runner is discarded afterwards.
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build the bundle
+        env:
+          APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
+          HOST: ${{ vars.ANDROID_HOST }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          # The version code has to increase with every upload, and a run number
+          # does that without anyone having to remember.
+          ARGS="-Pfamilyhq.applicationId=$APPLICATION_ID"
+          ARGS="$ARGS -Pfamilyhq.host=$HOST"
+          ARGS="$ARGS -PversionCode=${{ github.run_number }}"
+          if [ -n "$VERSION_NAME" ]; then
+            ARGS="$ARGS -PversionName=$VERSION_NAME"
+          fi
+          ./gradlew --no-daemon bundleRelease $ARGS
+
+      - name: Report the certificate fingerprint
+        run: |
+          # This is the value that goes into ANDROID_CERT_FINGERPRINTS on the
+          # server, unless you use Play App Signing — in which case use the one
+          # Play shows you as well.
+          echo "### Signing certificate" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          keytool -list -v -keystore release.jks \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            | grep -A1 "SHA256:" | head -2 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f release.jks keystore.properties
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: familyhq-release-bundle
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 14

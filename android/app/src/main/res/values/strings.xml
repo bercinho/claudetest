@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Family HQ</string>
+    <string name="setup_title">Family HQ setup</string>
+    <string name="shortcut_setup_short">Setup</string>
+    <string name="shortcut_setup_long">Server and screen time setup</string>
+</resources>

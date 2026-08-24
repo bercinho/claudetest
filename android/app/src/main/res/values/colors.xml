@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The bars the browser draws around the web app. These match the web app's
+      own theme-color, so the seam between the two is invisible.
+    -->
+    <color name="twa_status_bar">#F7F7FB</color>
+    <color name="twa_navigation_bar">#F7F7FB</color>
+
+    <!-- Behind the launcher icon's foreground. -->
+    <color name="ic_launcher_background">#6C4CE0</color>
+</resources>

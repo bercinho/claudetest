@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Platform themes only, no Material Components dependency: the one native
+      screen is written in Compose, which brings its own theme, so all the XML
+      theme has to do is get out of the way.
+    -->
+    <style name="Theme.FamilyHQ" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/twa_status_bar</item>
+    </style>
+
+    <!--
+      MainActivity decides where to go and finishes immediately. A translucent
+      theme means that decision never flashes a blank screen of its own — on
+      Android 12 and up the system splash is shown either way.
+    -->
+    <style name="Theme.FamilyHQ.Splash" parent="android:Theme.Translucent.NoTitleBar" />
+
+    <!-- Same reasoning for the activity that hands over to the browser. -->
+    <style name="Theme.FamilyHQ.Twa" parent="android:Theme.Translucent.NoTitleBar" />
+</resources>

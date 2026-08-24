@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Three sliders, for the setup shortcut on the launcher icon's long-press menu. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#6C4CE0">
+
+    <path
+        android:pathData="M3,7h8v2H3z M15,7h6v2h-6z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M13,4h2v8h-2z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M3,15h4v2H3z M11,15h10v2H11z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M9,12h2v8H9z"
+        android:fillColor="#FFFFFF" />
+</vector>

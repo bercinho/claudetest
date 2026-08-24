@@ -1,0 +1,15 @@
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+.cxx/
+.kotlin/
+captures/
+
+# Signing. These must never be committed — the keystore and its passwords are
+# the only proof that an update to the app on Google Play came from you, and
+# there is no way to recover or replace them once published.
+keystore.properties
+*.jks
+*.keystore
